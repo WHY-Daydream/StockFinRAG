@@ -1,14 +1,49 @@
-from flask import Flask, request, jsonify
+import os
+
+# Set HF cache paths before any model imports
+_base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "huggingface")
+os.environ["HF_HOME"] = _base
+os.environ["HF_HUB_CACHE"] = os.path.join(_base, "hub")
+os.environ["TRANSFORMERS_CACHE"] = os.path.join(_base, "hub")
+os.environ["SENTENCE_TRANSFORMERS_HOME"] = os.path.join(_base, "hub")
+
+# 仅当模型已缓存到本地时才启用离线模式，避免首次启动失败
+_hf_cache_dir = os.path.join(_base, "hub")
+_hf_models_present = os.path.isdir(_hf_cache_dir) and any(
+    d.startswith("models--") and os.path.isdir(os.path.join(_hf_cache_dir, d, "snapshots"))
+    for d in os.listdir(_hf_cache_dir)
+)
+if _hf_models_present:
+    os.environ["HF_HUB_OFFLINE"] = "1"
+
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from loguru import logger
 import uuid
+import traceback, sys
+import time
 
 from config import Config
+from db import get_mysql
 from agent.graph import get_qa_graph
 from ingestion.pipeline import FinKnowledgeBuilder
 
 app = Flask(__name__)
 CORS(app)
+
+app.config["SCHEDULER_ENABLED"] = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
+
+
+@app.errorhandler(Exception)
+def handle_all_errors(e):
+    traceback.print_exc()
+    logger.exception(f"Unhandled error: {e}")
+    return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html", active_page="chat")
 
 
 @app.route("/api/health", methods=["GET"])
@@ -34,15 +69,21 @@ def ask():
         "final_answer": "",
         "compliance_check": "pending",
         "compliance_reason": "",
+        "start_time": time.time(),
     }
 
-    result = graph.invoke(initial_state, config={"configurable": {"thread_id": session_id}})
-    return jsonify({
-        "session_id": session_id,
-        "question": question,
-        "answer": result["final_answer"],
-        "compliance": result.get("compliance_check", "pending"),
-    })
+    try:
+        result = graph.invoke(initial_state, config={"configurable": {"thread_id": session_id}})
+        return jsonify({
+            "session_id": session_id,
+            "question": question,
+            "answer": result["final_answer"],
+            "compliance": result.get("compliance_check", "pending"),
+        })
+    except Exception as e:
+        traceback.print_exc()
+        logger.exception(f"Ask failed for question: {question}")
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 
 @app.route("/api/ingest", methods=["POST"])
@@ -51,12 +92,125 @@ def ingest():
         data = request.get_json(force=True) or {}
         limit = data.get("limit", 10)
         builder = FinKnowledgeBuilder()
-        builder.process_unprocessed_docs(limit=limit)
-        return jsonify({"status": "ok", "processed": limit})
+        count = builder.process_unprocessed_docs(limit=limit)
+        return jsonify({"status": "ok", "processed": count})
     except Exception as e:
         logger.exception("Ingest failed")
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/seed", methods=["POST"])
+def seed():
+    """导入内置种子数据并向量化"""
+    try:
+        from ingestion.seed_data import load_seed_docs, import_to_mysql
+
+        data = request.get_json(force=True) or {}
+        limit = data.get("limit", 50)
+
+        docs = load_seed_docs()
+        count = import_to_mysql(docs)
+        if count == 0:
+            return jsonify({"status": "ok", "imported": 0, "message": "种子数据已存在，无需重复导入"})
+
+        # 向量化
+        builder = FinKnowledgeBuilder()
+        processed = builder.process_unprocessed_docs(limit=limit)
+        return jsonify({
+            "status": "ok",
+            "imported": count,
+            "vectorized": processed,
+            "message": f"导入 {count} 篇文档，向量化 {processed} 篇",
+        })
+    except Exception as e:
+        logger.exception("Seed import failed")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/documents", methods=["GET"])
+def list_documents():
+    """列出库中文档状态"""
+    try:
+        conn = get_mysql()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, doc_type, title, source, chunk_count, DATE(publish_date) as pub_date, "
+                    "LEFT(summary, 100) as summary_short, created_at "
+                    "FROM documents ORDER BY created_at DESC LIMIT 100"
+                )
+                docs = cur.fetchall()
+            return jsonify({"status": "ok", "total": len(docs), "documents": docs})
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.exception("List documents failed")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/knowledge", methods=["GET"])
+def knowledge_page():
+    return render_template("knowledge.html", active_page="knowledge")
+
+
+@app.route("/api/crawl", methods=["POST"])
+def crawl():
+    """从配置的 URL 源抓取最新金融文档"""
+    try:
+        from crawler.financial_crawler import batch_crawl
+
+        data = request.get_json(force=True) or {}
+        config_path = data.get("config")  # 可选：自定义爬取配置
+
+        doc_ids = batch_crawl(config_path)
+        return jsonify({
+            "status": "ok",
+            "crawled": len(doc_ids),
+            "doc_ids": doc_ids,
+            "message": f"成功抓取 {len(doc_ids)} 篇新文档",
+        })
+    except Exception as e:
+        logger.exception("Crawl failed")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/indices", methods=["GET"])
+def get_indices():
+    """获取最新指数行情"""
+    INDICES = [
+        ("000001", "上证指数"),
+        ("399001", "深证成指"),
+        ("399006", "创业板指"),
+        ("000688", "科创50"),
+    ]
+    results = []
+    conn = get_mysql()
+    try:
+        with conn.cursor() as cur:
+            for code, name in INDICES:
+                cur.execute(
+                    "SELECT date, close, open, high, low, volume "
+                    "FROM stock_indices WHERE index_code=%s ORDER BY date DESC LIMIT 1",
+                    (code,),
+                )
+                row = cur.fetchone()
+                if row:
+                    results.append({
+                        "code": code,
+                        "name": name,
+                        "close": float(row["close"]),
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "volume": int(row["volume"]),
+                        "date": str(row["date"]),
+                    })
+    finally:
+        conn.close()
+    return jsonify({"indices": results})
+
+
 if __name__ == "__main__":
+    from scheduler import init_scheduler
+    init_scheduler(app)
     app.run(host="0.0.0.0", port=5000, debug=False)
