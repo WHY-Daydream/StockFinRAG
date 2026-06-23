@@ -8,6 +8,7 @@ class Config:
     # Milvus
     MILVUS_HOST = os.getenv("MILVUS_HOST", "127.0.0.1")
     MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
+    MILVUS_DATABASE = os.getenv("MILVUS_DATABASE", "default")
 
     # MySQL
     MYSQL_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -19,6 +20,7 @@ class Config:
     # Redis
     REDIS_HOST = os.getenv("REDIS_HOST", "127.0.0.1")
     REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
     REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 
     # LLM
@@ -26,7 +28,7 @@ class Config:
     DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
     LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 
-    # Embedding
+    # Embedding（使用已缓存的本地模型，避免从 HuggingFace 下载）
     EMBEDDING_MODEL = "BAAI/bge-large-zh-v1.5"
     EMBEDDING_DIM = 1024
 
