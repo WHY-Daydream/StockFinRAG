@@ -4,6 +4,7 @@ langchain-milvus==0.1.6
 langgraph==0.3.16
 pymilvus==2.5.2
 pymysql==1.1.1
+DBUtils>=3.0.0
 redis==5.2.1
 flask==3.1.1
 flask-cors==5.0.1
@@ -16,3 +17,6 @@ sentence-transformers==3.4.1
 pydantic==2.10.6
 python-dotenv==1.1.0
 loguru==0.7.3
+
+akshare>=1.14.0
+apscheduler>=3.10.0
