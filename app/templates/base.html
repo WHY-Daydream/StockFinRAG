@@ -1,0 +1,50 @@
+<!-- app/templates/base.html -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}StockFinRAG{% endblock %} — 金融合规问答</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/marked@15.0.7/marked.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-left">
+                <a href="/" class="logo">📈 StockFinRAG</a>
+            </div>
+            <nav class="header-nav">
+                <a href="/" class="nav-link {% if active_page == 'chat' %}active{% endif %}">💬 问答</a>
+                <a href="/knowledge" class="nav-link {% if active_page == 'knowledge' %}active{% endif %}">📚 知识库</a>
+            </nav>
+            <div class="header-right" id="stock-ticker">
+                <!-- 由 /api/indices 动态加载 -->
+                <span class="ticker-loading">加载中...</span>
+            </div>
+        </header>
+        <main class="app-main">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    <script>
+        // 加载行情小部件
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/indices')
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.indices && data.indices.length > 0) {
+                        const html = data.indices.map(i =>
+                            `<span class="ticker-item">${i.name} <strong>${i.close.toFixed(2)}</strong></span>`
+                        ).join('');
+                        document.getElementById('stock-ticker').innerHTML = html;
+                    }
+                })
+                .catch(() => {});
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
