@@ -7,14 +7,29 @@ os.environ["HF_HUB_CACHE"] = os.path.join(_base, "hub")
 os.environ["TRANSFORMERS_CACHE"] = os.path.join(_base, "hub")
 os.environ["SENTENCE_TRANSFORMERS_HOME"] = os.path.join(_base, "hub")
 
-# 仅当模型已缓存到本地时才启用离线模式，避免首次启动失败
+# 仅当 embedding 模型已缓存到本地时才启用离线模式
+# 从 config.py 中读取 EMBEDDING_MODEL 避免在环境变量设置前导入
 _hf_cache_dir = os.path.join(_base, "hub")
-_hf_models_present = os.path.isdir(_hf_cache_dir) and any(
-    d.startswith("models--") and os.path.isdir(os.path.join(_hf_cache_dir, d, "snapshots"))
-    for d in os.listdir(_hf_cache_dir)
-)
-if _hf_models_present:
-    os.environ["HF_HUB_OFFLINE"] = "1"
+_embedding_model = None
+_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.py")
+if os.path.isfile(_config_path):
+    with open(_config_path, "r", encoding="utf-8") as _f:
+        for _line in _f:
+            if "EMBEDDING_MODEL" in _line and "=" in _line:
+                _parts = _line.split("=", 1)
+                if len(_parts) == 2:
+                    _val = _parts[1].strip().strip("\"'")
+                    if _val:
+                        _embedding_model = _val
+                    break
+
+if _embedding_model:
+    _model_slug = "models--" + _embedding_model.replace("/", "--")
+    _model_cached = os.path.isdir(_hf_cache_dir) and os.path.isdir(
+        os.path.join(_hf_cache_dir, _model_slug, "snapshots")
+    )
+    if _model_cached:
+        os.environ["HF_HUB_OFFLINE"] = "1"
 
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
@@ -184,29 +199,32 @@ def get_indices():
         ("000688", "科创50"),
     ]
     results = []
-    conn = get_mysql()
     try:
-        with conn.cursor() as cur:
-            for code, name in INDICES:
-                cur.execute(
-                    "SELECT date, close, open, high, low, volume "
-                    "FROM stock_indices WHERE index_code=%s ORDER BY date DESC LIMIT 1",
-                    (code,),
-                )
-                row = cur.fetchone()
-                if row:
-                    results.append({
-                        "code": code,
-                        "name": name,
-                        "close": float(row["close"]),
-                        "open": float(row["open"]),
-                        "high": float(row["high"]),
-                        "low": float(row["low"]),
-                        "volume": int(row["volume"]),
-                        "date": str(row["date"]),
-                    })
-    finally:
-        conn.close()
+        conn = get_mysql()
+        try:
+            with conn.cursor() as cur:
+                for code, name in INDICES:
+                    cur.execute(
+                        "SELECT date, close, open, high, low, volume "
+                        "FROM stock_indices WHERE index_code=%s ORDER BY date DESC LIMIT 1",
+                        (code,),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        results.append({
+                            "code": code,
+                            "name": name,
+                            "close": float(row["close"]),
+                            "open": float(row["open"]),
+                            "high": float(row["high"]),
+                            "low": float(row["low"]),
+                            "volume": int(row["volume"]),
+                            "date": str(row["date"]),
+                        })
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to fetch indices: {e}")
     return jsonify({"indices": results})
 
 
