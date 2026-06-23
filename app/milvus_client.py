@@ -7,7 +7,8 @@ from loguru import logger
 
 
 def connect_milvus():
-    connections.connect(alias="default", host=Config.MILVUS_HOST, port=Config.MILVUS_PORT)
+    connections.connect(alias="default", host=Config.MILVUS_HOST, port=Config.MILVUS_PORT,
+                        db_name=Config.MILVUS_DATABASE)
 
 
 def create_collection_if_not_exists(collection_name: str, dim: int) -> Collection:
@@ -27,8 +28,19 @@ def create_collection_if_not_exists(collection_name: str, dim: int) -> Collectio
     schema = CollectionSchema(fields, description=collection_name)
     collection = Collection(collection_name, schema)
 
-    index_params = {"metric_type": "IP", "index_type": "IVF_FLAT", "params": {"nlist": 1024}}
+    index_params = {"metric_type": "IP", "index_type": "FLAT", "params": {}}
     collection.create_index("embedding", index_params)
     collection.load()
     logger.info(f"Created collection: {collection_name}")
     return collection
+
+def rebuild_index(collection_name: str):
+    """重建索引（当数据量变化较大时调用）"""
+    if utility.has_collection(collection_name):
+        col = Collection(collection_name)
+        col.release()
+        col.drop_index()
+        index_params = {"metric_type": "IP", "index_type": "FLAT", "params": {}}
+        col.create_index("embedding", index_params)
+        col.load()
+        logger.info(f"Rebuilt index for {collection_name}")

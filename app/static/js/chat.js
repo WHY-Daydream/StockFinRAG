@@ -31,12 +31,36 @@ function renderSessionList() {
     }
     list.innerHTML = sessions.map(s =>
         `<div class="session-item ${s.id === current ? 'active' : ''}"
-              onclick="switchSession('${s.id}')"
-              style="padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:4px;
-                     ${s.id === current ? 'background:#e6f4ff;color:#1677ff' : 'background:#fff'}">
-          ${s.preview || '新会话'}
+              style="display:flex;align-items:center;padding:4px 12px;border-radius:6px;margin-bottom:4px;
+                     ${s.id === current ? 'background:#e6f4ff' : 'background:#fff'}">
+          <span onclick="switchSession('${s.id}')"
+                style="flex:1;cursor:pointer;font-size:13px;padding:4px 0;color:${s.id === current ? '#1677ff' : '#333'}">
+            ${s.preview || '新会话'}
+          </span>
+          <span onclick="deleteSession('${s.id}')"
+                style="cursor:pointer;font-size:12px;color:#ccc;padding:2px 6px;border-radius:4px;"
+                onmouseover="this.style.color='#ff4d4f';this.style.background='#fff1f0'"
+                onmouseout="this.style.color='#ccc';this.style.background='transparent'"
+                title="删除会话">✕</span>
          </div>`
     ).join('');
+}
+
+function deleteSession(id) {
+    let sessions = getSessions();
+    sessions = sessions.filter(s => s.id !== id);
+    saveSessions(sessions);
+    const current = getCurrentSession();
+    if (current === id) {
+        if (sessions.length > 0) {
+            setCurrentSession(sessions[0].id);
+            loadMessages(sessions[0].id);
+        } else {
+            setCurrentSession('');
+            clearMessages();
+        }
+    }
+    renderSessionList();
 }
 
 function switchSession(id) {
