@@ -14,5 +14,29 @@
         "discover": true,
         "max_articles": 5,
         "title_prefix": "证监会政策"
+    },
+    {
+        "url": "https://www.pbc.gov.cn",
+        "type": "政策",
+        "title": "中国人民银行政策文件",
+        "discover": true,
+        "max_articles": 5,
+        "title_prefix": "央行政策"
+    },
+    {
+        "url": "http://www.sse.com.cn",
+        "type": "公告",
+        "title": "上交所上市公司监管公告",
+        "discover": true,
+        "max_articles": 5,
+        "title_prefix": "上交所公告"
+    },
+    {
+        "url": "https://finance.sina.com.cn/",
+        "type": "新闻",
+        "title": "新浪财经新闻",
+        "discover": true,
+        "max_articles": 5,
+        "title_prefix": "新浪财经"
     }
 ]
