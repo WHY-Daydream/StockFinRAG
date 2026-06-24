@@ -60,7 +60,12 @@ def handle_all_errors(e):
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", active_page="chat")
+    return render_template("base.html")
+
+
+@app.route("/knowledge", methods=["GET"])
+def knowledge_page():
+    return render_template("base.html")
 
 
 @app.route("/favicon.ico", methods=["GET"])
@@ -187,11 +192,6 @@ def list_documents():
     except Exception as e:
         logger.exception("List documents failed")
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/knowledge", methods=["GET"])
-def knowledge_page():
-    return render_template("knowledge.html", active_page="knowledge")
 
 
 @app.route("/api/crawl", methods=["POST"])

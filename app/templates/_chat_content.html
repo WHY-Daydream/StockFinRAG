@@ -1,0 +1,17 @@
+<div class="chat-sidebar">
+    <button class="btn btn-primary" onclick="newSession()" style="width:100%">＋ 新会话</button>
+    <div id="session-list"></div>
+</div>
+<div class="chat-main">
+    <div class="chat-messages" id="chat-messages">
+        <div class="message message-assistant">
+            <div class="bubble">👋 你好！我是 StockFinRAG 金融助手。请提出你的金融相关问题。</div>
+        </div>
+    </div>
+    <div class="chat-input">
+        <input id="question-input" type="text" placeholder="输入金融问题..." autofocus
+               onkeydown="if(event.key==='Enter') sendQuestion()">
+        <button id="send-btn" onclick="sendQuestion()">发送</button>
+    </div>
+</div>
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>

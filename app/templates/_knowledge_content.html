@@ -1,0 +1,28 @@
+<div class="knowledge-main">
+    <div class="knowledge-actions">
+        <button class="btn btn-success" onclick="seedData()">🌱 导入种子数据</button>
+        <button class="btn" onclick="crawlData()">🕷️ 触发爬取</button>
+        <button class="btn" onclick="vectorizeData()">⚡ 向量化未处理</button>
+        <span id="action-status" style="font-size:13px;color:#888;align-self:center"></span>
+    </div>
+    <div class="search-box">
+        <input type="text" id="search-input" placeholder="搜索文档标题..." oninput="searchDocs()">
+        <select class="filter-select" id="type-filter" onchange="searchDocs()">
+            <option value="">全部类型</option>
+            <option value="政策">政策</option>
+            <option value="法规">法规</option>
+            <option value="新闻">新闻</option>
+            <option value="知识">知识</option>
+        </select>
+        <span id="doc-count" style="font-size:13px;color:#888;"></span>
+    </div>
+    <table class="knowledge-table">
+        <thead>
+            <tr><th>标题</th><th>类型</th><th>来源</th><th>日期</th><th>分块数</th><th>状态</th></tr>
+        </thead>
+        <tbody id="doc-tbody">
+            <tr><td colspan="6" style="text-align:center;color:#aaa">加载中...</td></tr>
+        </tbody>
+    </table>
+</div>
+<script src="{{ url_for('static', filename='js/knowledge.js') }}"></script>
