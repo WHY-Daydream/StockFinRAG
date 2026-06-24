@@ -131,3 +131,32 @@ def test_analysis_node_prompt_mentions_history():
         source = f.read()
     # 应包含"对话历史"章节
     assert "对话历史" in source
+
+
+# ======================================================================
+# Tests for Task 3: 三级历史降级
+# ======================================================================
+
+def test_qa_service_accepts_history_parameter():
+    """ask 方法接受 history 参数"""
+    from service.qa_service import QAAnswerService
+    svc = QAAnswerService()
+    import inspect
+    sig = inspect.signature(svc.ask)
+    assert "history" in sig.parameters
+
+
+def test_qa_service_has_get_history_method():
+    """服务层有 _get_history 方法"""
+    from service.qa_service import QAAnswerService
+    svc = QAAnswerService()
+    assert hasattr(svc, "_get_history")
+
+
+def test_get_history_with_frontend():
+    """前端传 history 时直接返回"""
+    from service.qa_service import QAAnswerService
+    svc = QAAnswerService()
+    history = [{"role": "user", "content": "test"}]
+    result = svc._get_history("sess-1", frontend_history=history)
+    assert result == history

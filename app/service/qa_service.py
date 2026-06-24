@@ -18,7 +18,7 @@ class QAAnswerService:
     def __init__(self):
         self.cache = ResultCache()
 
-    def ask(self, question: str, session_id: str) -> dict:
+    def ask(self, question: str, session_id: str, history: list = None) -> dict:
         """处理一个问题，返回结构化结果"""
         cache_key = f"answer:{question}"
         cached = self.cache.redis.get(cache_key)
@@ -30,11 +30,15 @@ class QAAnswerService:
             except Exception:
                 pass
 
+        # 三级降级获取对话历史
+        conversation_history = self._get_history(session_id, frontend_history=history)
+
         from agent.graph import get_qa_graph
         graph = get_qa_graph()
         initial_state = {
             "question": question,
             "session_id": session_id,
+            "conversation_history": conversation_history,
             "retrieved_context": [],
             "analysis_result": "",
             "final_answer": "",
@@ -56,8 +60,68 @@ class QAAnswerService:
         self.cache.redis.setex(cache_key, 1800,
                                json.dumps(response, ensure_ascii=False))
 
+        # 将本轮问答追加到 Redis 历史
+        try:
+            self.cache.append_to_session_history(session_id, question, result.get("final_answer", ""))
+        except Exception:
+            pass
+
         self._write_audit_log(session_id, question, result)
         return response
+
+    def _get_history(self, session_id: str, frontend_history: list = None) -> list:
+        """三级兜底获取对话历史"""
+        # 优先级 1: 前端传的 history
+        if frontend_history is not None:
+            try:
+                self.cache.set_session_history(session_id, frontend_history)
+            except Exception:
+                pass
+            return _truncate_history(frontend_history)
+
+        # 优先级 2: Redis 缓存
+        try:
+            redis_history = self.cache.get_session_history(session_id)
+            if redis_history is not None:
+                return _truncate_history(redis_history)
+        except Exception:
+            pass
+
+        # 优先级 3: MySQL qa_logs 表
+        try:
+            mysql_history = self._load_mysql_history(session_id)
+            if mysql_history:
+                try:
+                    self.cache.set_session_history(session_id, mysql_history)
+                except Exception:
+                    pass
+                return _truncate_history(mysql_history)
+        except Exception:
+            pass
+
+        return []
+
+    def _load_mysql_history(self, session_id: str) -> list:
+        """从 MySQL qa_logs 表加载历史"""
+        from db import get_mysql
+        conn = get_mysql()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT question, answer FROM qa_logs "
+                    "WHERE session_id=%s ORDER BY id ASC LIMIT 6",
+                    (session_id,),
+                )
+                rows = cur.fetchall()
+                if not rows:
+                    return None
+                history = []
+                for row in rows:
+                    history.append({"role": "user", "content": row["question"]})
+                    history.append({"role": "assistant", "content": row["answer"]})
+                return history
+        finally:
+            conn.close()
 
     def _write_audit_log(self, session_id: str, question: str, result: dict):
         """写入审计日志到 MySQL（由服务层负责，LLM 层不再直接写库）"""
