@@ -85,9 +85,10 @@ def ask():
         return jsonify({"error": "question is required"}), 400
 
     session_id = data.get("session_id", str(uuid.uuid4()))
+    history = data.get("history")  # 前端多轮对话历史（可选）
 
     try:
-        result = qa_service.ask(question, session_id)
+        result = qa_service.ask(question, session_id, history=history)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()

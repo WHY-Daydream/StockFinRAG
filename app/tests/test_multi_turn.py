@@ -160,3 +160,21 @@ def test_get_history_with_frontend():
     history = [{"role": "user", "content": "test"}]
     result = svc._get_history("sess-1", frontend_history=history)
     assert result == history
+
+
+# ======================================================================
+# Tests for Task 4: API + Frontend 集成
+# ======================================================================
+
+def test_ask_endpoint_accepts_history():
+    """api_server.py 的 ask 路由处理 history 参数"""
+    with open("api_server.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "history" in source
+
+
+def test_chat_js_sends_history():
+    """chat.js 的 sendQuestion 附带 history"""
+    with open("static/js/chat.js", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "history" in source

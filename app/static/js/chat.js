@@ -143,6 +143,16 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function getRecentHistory() {
+    const sessions = getSessions();
+    const current = getCurrentSession();
+    const session = sessions.find(s => s.id === current);
+    if (!session || !session.messages || session.messages.length === 0) return [];
+    // 取最近 6 条（3 轮对话）
+    const recent = session.messages.slice(-6);
+    return recent.map(function(m) { return { role: m.role, content: m.content }; });
+}
+
 function sendQuestion() {
     const input = document.getElementById('question-input');
     const question = input.value.trim();
@@ -225,7 +235,7 @@ function sendQuestion() {
     fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, session_id: sessionId }),
+        body: JSON.stringify({ question, session_id: sessionId, history: getRecentHistory() }),
     })
     .then(r => r.json())
     .then(data => {
