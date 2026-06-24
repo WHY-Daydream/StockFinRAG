@@ -36,19 +36,18 @@ from flask_cors import CORS
 from loguru import logger
 import uuid
 import traceback, sys
-import json
-import time
 
 from config import Config
 from db import get_mysql
-from agent.graph import get_qa_graph
-from ingestion.pipeline import FinKnowledgeBuilder
-from retrieval.cache import ResultCache
+from service.qa_service import QAAnswerService
 
 app = Flask(__name__)
 CORS(app)
 
 app.config["SCHEDULER_ENABLED"] = os.getenv("SCHEDULER_ENABLED", "true").lower() == "true"
+
+# 服务层实例
+qa_service = QAAnswerService()
 
 
 @app.errorhandler(Exception)
@@ -87,47 +86,9 @@ def ask():
 
     session_id = data.get("session_id", str(uuid.uuid4()))
 
-    # 检查问答结果缓存（相同问题直接返回，跳过 DeepSeek）
-    answer_cache = ResultCache()
-    answer_cache_key = f"answer:{question}"
-    cached = answer_cache.redis.get(answer_cache_key)
-    if cached:
-        try:
-            cached_data = json.loads(cached)
-            logger.info(f"Answer cache hit: {question[:50]}...")
-            return jsonify({
-                "session_id": session_id,
-                "question": question,
-                "answer": cached_data.get("answer", ""),
-                "compliance": cached_data.get("compliance", "pass"),
-            })
-        except Exception:
-            pass  # 缓存解析失败，重新走流程
-
-    graph = get_qa_graph()
-
-    initial_state = {
-        "question": question,
-        "session_id": session_id,
-        "retrieved_context": [],
-        "analysis_result": "",
-        "final_answer": "",
-        "compliance_check": "pending",
-        "compliance_reason": "",
-        "start_time": time.time(),
-    }
-
     try:
-        result = graph.invoke(initial_state, config={"configurable": {"thread_id": session_id}})
-        response_data = {
-            "session_id": session_id,
-            "question": question,
-            "answer": result["final_answer"],
-            "compliance": result.get("compliance_check", "pending"),
-        }
-        # 缓存完整结果，TTL 延长到 30 分钟
-        answer_cache.redis.setex(answer_cache_key, 1800, json.dumps(response_data, ensure_ascii=False))
-        return jsonify(response_data)
+        result = qa_service.ask(question, session_id)
+        return jsonify(result)
     except Exception as e:
         traceback.print_exc()
         logger.exception(f"Ask failed for question: {question}")
@@ -139,8 +100,7 @@ def ingest():
     try:
         data = request.get_json(force=True) or {}
         limit = data.get("limit", 10)
-        builder = FinKnowledgeBuilder()
-        count = builder.process_unprocessed_docs(limit=limit)
+        count = qa_service.ingest(limit=limit)
         return jsonify({"status": "ok", "processed": count})
     except Exception as e:
         logger.exception("Ingest failed")
@@ -149,24 +109,15 @@ def ingest():
 
 @app.route("/api/seed", methods=["POST"])
 def seed():
-    """导入内置种子数据并向量化"""
     try:
-        from ingestion.seed_data import load_seed_docs, import_to_mysql
-
         data = request.get_json(force=True) or {}
         limit = data.get("limit", 50)
-
-        docs = load_seed_docs()
-        count = import_to_mysql(docs)
-
-        # 无论是否新导入，都处理所有未向量化的文档
-        builder = FinKnowledgeBuilder()
-        processed = builder.process_unprocessed_docs(limit=limit)
+        result = qa_service.seed(limit=limit)
         return jsonify({
             "status": "ok",
-            "imported": count,
-            "vectorized": processed,
-            "message": f"导入 {count} 篇文档，向量化 {processed} 篇",
+            "imported": result["imported"],
+            "vectorized": result["vectorized"],
+            "message": f"导入 {result['imported']} 篇文档，向量化 {result['vectorized']} 篇",
         })
     except Exception as e:
         logger.exception("Seed import failed")

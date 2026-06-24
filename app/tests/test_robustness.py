@@ -74,16 +74,11 @@ class TestEmptyContext:
 class TestLatencyLogging:
     """Bug #11: 审计日志应记录 latency_ms"""
 
-    def test_latency_tracked_in_graph(self):
-        """graph.py 中应记录请求延迟"""
-        source = get_file_source("agent/graph.py")
-        assert "latency" in source.lower(), (
-            "graph.py 中应记录请求延迟 (latency)"
-        )
-
-    def test_latency_ms_in_format_output(self):
-        """format_output 应写入 latency_ms"""
-        source = get_file_source("agent/graph.py")
+    def test_latency_tracked_in_service(self):
+        """审计日志写入和 latency_ms 应在服务层处理"""
+        source = get_file_source("service/qa_service.py")
         assert "latency_ms" in source, (
-            "format_output 中应包含 latency_ms 字段的写入"
+            "qa_service.py 中应包含 latency_ms 字段的写入"
         )
+        assert "qa_logs" in source, "qa_service.py 中应写入 qa_logs 表"
+        assert "_write_audit_log" in source, "应有审计日志写入方法"

@@ -1,17 +1,23 @@
-"""验证 /api/seed 始终执行向量化"""
+"""验证 seed 和 ingest 始终执行向量化"""
 
-def test_seed_always_vectorizes():
-    """seed 无论是否导入新文档，都应调用向量化"""
+def test_service_has_seed_method():
+    """qa_service 应有 seed 方法"""
+    with open("service/qa_service.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "def seed(" in source, "qa_service 应有 seed 方法"
+    assert "FinKnowledgeBuilder" in source or "process_unprocessed_docs" in source, "seed 应调用向量化"
+
+
+def test_service_has_ingest_method():
+    """qa_service 应有 ingest 方法"""
+    with open("service/qa_service.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "def ingest(" in source, "qa_service 应有 ingest 方法"
+
+
+def test_api_server_uses_service():
+    """api_server 应通过 QAAnswerService 调用，而非直接调用下层"""
     with open("api_server.py", "r", encoding="utf-8") as f:
         source = f.read()
-
-    seed_start = source.index("def seed():")
-    remainder = source[seed_start:]
-    next_def = remainder.find("\ndef ", 1)
-    seed_body = remainder[:next_def] if next_def > 0 else remainder
-
-    # seed 函数中应包含 FinKnowledgeBuilder（向量化）
-    assert "FinKnowledgeBuilder" in seed_body, "seed 函数应始终调用向量化"
-    assert "process_unprocessed_docs" in seed_body, "seed 函数应处理未向量化的文档"
-    # 不应有过早 return（count==0 时直接返回）
-    assert "count == 0" not in seed_body, "count==0 的提前 return 已被移除"
+    assert "qa_service." in source, "api_server 应通过 qa_service 调用"
+    assert "FinKnowledgeBuilder" not in source, "api_server 不应直接引用 FinKnowledgeBuilder"

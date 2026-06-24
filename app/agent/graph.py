@@ -3,8 +3,9 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from openai import OpenAI
 import json
+import time
 from loguru import logger
-import sys; sys.path.insert(0, "..")
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
 from retrieval.hybrid_searcher import HybridSearcher
 from retrieval.cache import ResultCache
@@ -18,6 +19,7 @@ class AgentState(TypedDict):
     final_answer: str
     compliance_check: str
     compliance_reason: str
+    start_time: float  # 用于计算 latency_ms
 
 
 def retrieval_node(state: AgentState) -> dict:
@@ -37,6 +39,11 @@ def retrieval_node(state: AgentState) -> dict:
 def analysis_node(state: AgentState) -> dict:
     """分析 Agent: 基于检索结果生成回答"""
     context = state["retrieved_context"]
+    if not context:
+        logger.warning(f"No context retrieved for question: {state['question'][:50]}")
+        return {
+            "analysis_result": "⚠️ 未检索到与问题相关的金融资料。请尝试重新表述问题，或补充相关数据后再查询。",
+        }
     context_text = "\n---\n".join(
         [f"[{c['type']} | score={c.get('rerank_score', c['score']):.4f}]\n{c['content']}"
          for c in context]
@@ -56,12 +63,18 @@ def analysis_node(state: AgentState) -> dict:
 3. 对于财务数据，需要注明来源和时间
 4. 使用简洁清晰的语言
 """
-    resp = client.chat.completions.create(
-        model=Config.LLM_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-    )
-    return {"analysis_result": resp.choices[0].message.content}
+    try:
+        resp = client.chat.completions.create(
+            model=Config.LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+        )
+        return {"analysis_result": resp.choices[0].message.content}
+    except Exception as e:
+        logger.error(f"Analysis API call failed: {e}")
+        return {
+            "analysis_result": f"⚠️ 分析服务暂时不可用，无法生成回答。错误: {str(e)}",
+        }
 
 
 def compliance_node(state: AgentState) -> dict:
@@ -85,14 +98,24 @@ def compliance_node(state: AgentState) -> dict:
 ## 输出格式（必须是 JSON）
 {{"decision": "pass" 或 "reject", "reason": "具体说明"}}
 """
-    resp = client.chat.completions.create(
-        model=Config.LLM_MODEL,
-        messages=[{"role": "user", "content": check_prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.1,
-    )
-    result = json.loads(resp.choices[0].message.content)
-    return {"compliance_check": result["decision"], "compliance_reason": result["reason"]}
+    try:
+        resp = client.chat.completions.create(
+            model=Config.LLM_MODEL,
+            messages=[{"role": "user", "content": check_prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        result = json.loads(resp.choices[0].message.content)
+        return {
+            "compliance_check": result.get("decision", "reject"),
+            "compliance_reason": result.get("reason", "合规审核解析失败"),
+        }
+    except (json.JSONDecodeError, KeyError, Exception) as e:
+        logger.error(f"Compliance check failed: {e}")
+        return {
+            "compliance_check": "reject",
+            "compliance_reason": f"合规审核异常: {str(e)}",
+        }
 
 
 def route_after_compliance(state: AgentState) -> Literal["reject_handler", "format_output"]:
@@ -110,31 +133,8 @@ def reject_handler(state: AgentState) -> dict:
 
 
 def format_output(state: AgentState) -> dict:
-    """记录审计日志 + 输出最终回答"""
-    from db import get_mysql
-    answer = state["analysis_result"]
-    try:
-        conn = get_mysql()
-        with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO qa_logs (session_id, question, answer, retrieved_chunks, agent_trace, compliance_check)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                (
-                    state["session_id"],
-                    state["question"],
-                    answer,
-                    json.dumps([{"doc_id": c.get("doc_id"), "score": c.get("rerank_score", c.get("score"))}
-                                for c in state["retrieved_context"]], ensure_ascii=False),
-                    json.dumps({"retrieval_count": len(state["retrieved_context"])}),
-                    state["compliance_check"],
-                ),
-            )
-            conn.commit()
-    except Exception as e:
-        logger.error(f"Audit log error: {e}")
-    finally:
-        conn.close()
-    return {"final_answer": answer}
+    """仅输出最终回答（审计日志由服务层负责写入）"""
+    return {"final_answer": state["analysis_result"]}
 
 
 def build_qa_graph():
