@@ -144,10 +144,10 @@ function sendQuestion() {
         { id: 'step-comply',  label: '合规审核', icon: '✅' },
     ];
     container.innerHTML += `<div class="message message-assistant" id="loading-msg">
-        <div class="bubble" style="min-width:220px">
+        <div class="bubble loading-pulse" style="min-width:220px">
             ${STEPS.map((s, i) => `
                 <div id="${s.id}" style="padding:4px 0;display:flex;align-items:center;gap:8px;
-                    ${i === 0 ? '' : 'opacity:0.4'}"}>
+                    ${i === 0 ? '' : 'opacity:0.4'}">
                     <span class="step-indicator" style="width:20px;text-align:center">
                         ${i === 0 ? '⏳' : '○'}
                     </span>
