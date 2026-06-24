@@ -79,14 +79,20 @@ class QAAnswerService:
 
         yield "event: step\ndata: retrieving\n\n"
         conversation_history = self._get_history(session_id, frontend_history=history)
+        t0 = time.time()
         try:
             searcher = HybridSearcher()
+            t1 = time.time()
+            logger.info(f"[timing] HybridSearcher init: {t1-t0:.1f}s")
             enricher = ContextEnricher()
             results = searcher.search(question, top_k=10)
+            t2 = time.time()
+            logger.info(f"[timing] Search + enrich: {t2-t1:.1f}s")
             enriched = enricher.enrich(results, window_size=2)
         except Exception as e:
             logger.warning(f"Stream retrieval failed: {e}")
             enriched = []
+        logger.info(f"[timing] Total retrieving: {time.time()-t0:.1f}s")
 
         yield "event: step\ndata: analyzing\n\n"
 

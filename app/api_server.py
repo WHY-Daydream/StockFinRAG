@@ -31,7 +31,7 @@ if _embedding_model:
     if _model_cached:
         os.environ["HF_HUB_OFFLINE"] = "1"
 
-from flask import Flask, request, jsonify, render_template, Response
+from flask import Flask, request, jsonify, render_template, Response, stream_with_context
 from flask_cors import CORS
 from loguru import logger
 import uuid
@@ -107,15 +107,14 @@ def ask_stream():
     def generate():
         yield from qa_service.ask_stream(req.question, session_id, history=req.history)
 
-    return Response(
-        generate(),
+    resp = Response(
+        stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
     )
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    resp.headers["Connection"] = "keep-alive"
+    return resp
 
 
 @app.route("/api/ingest", methods=["POST"])
