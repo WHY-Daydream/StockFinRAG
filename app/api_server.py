@@ -36,12 +36,14 @@ from flask_cors import CORS
 from loguru import logger
 import uuid
 import traceback, sys
+import json
 import time
 
 from config import Config
 from db import get_mysql
 from agent.graph import get_qa_graph
 from ingestion.pipeline import FinKnowledgeBuilder
+from retrieval.cache import ResultCache
 
 app = Flask(__name__)
 CORS(app)
@@ -81,14 +83,12 @@ def ask():
     session_id = data.get("session_id", str(uuid.uuid4()))
 
     # 检查问答结果缓存（相同问题直接返回，跳过 DeepSeek）
-    from retrieval.cache import ResultCache
     answer_cache = ResultCache()
     answer_cache_key = f"answer:{question}"
     cached = answer_cache.redis.get(answer_cache_key)
     if cached:
-        import json as _json
         try:
-            cached_data = _json.loads(cached)
+            cached_data = json.loads(cached)
             logger.info(f"Answer cache hit: {question[:50]}...")
             return jsonify({
                 "session_id": session_id,
@@ -121,7 +121,7 @@ def ask():
             "compliance": result.get("compliance_check", "pending"),
         }
         # 缓存完整结果，TTL 延长到 30 分钟
-        answer_cache.redis.setex(answer_cache_key, 1800, _json.dumps(response_data, ensure_ascii=False))
+        answer_cache.redis.setex(answer_cache_key, 1800, json.dumps(response_data, ensure_ascii=False))
         return jsonify(response_data)
     except Exception as e:
         traceback.print_exc()
