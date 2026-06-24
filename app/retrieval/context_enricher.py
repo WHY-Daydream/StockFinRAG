@@ -74,9 +74,9 @@ class ContextEnricher:
                     max_id = max(chunk_ids) + window_size
 
                     sql = (
-                        "SELECT doc_id, id AS chunk_id, chunk_type, content "
+                        "SELECT doc_id, chunk_index AS chunk_id, chunk_type, content "
                         "FROM chunks "
-                        "WHERE doc_id=%s AND id>=%s AND id<=%s "
+                        "WHERE doc_id=%s AND chunk_index>=%s AND chunk_index<=%s "
                         "ORDER BY chunk_index"
                     )
                     cursor.execute(sql, (doc_id, min_id, max_id))
