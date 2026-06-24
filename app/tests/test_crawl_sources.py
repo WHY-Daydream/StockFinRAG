@@ -41,3 +41,31 @@ class TestCrawlSources:
             assert isinstance(s["discover"], bool), f"Source {i} 'discover' should be bool"
             assert isinstance(s["url"], str) and len(s["url"]) > 0, f"Source {i} 'url' invalid"
             assert isinstance(s["type"], str) and len(s["type"]) > 0, f"Source {i} 'type' invalid"
+
+
+SEED_DOCS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "seed_financial_docs.json"
+)
+
+
+class TestSeedDocs:
+    """seed_financial_docs.json 文档验证"""
+
+    def load_docs(self) -> list:
+        with open(SEED_DOCS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_seed_docs_count(self):
+        """至少 20 篇文档"""
+        docs = self.load_docs()
+        assert len(docs) >= 20, f"Only {len(docs)} seed docs"
+
+    def test_seed_docs_have_content(self):
+        """每篇文档有 title、doc_type、content 且正文超过 100 字"""
+        docs = self.load_docs()
+        for doc in docs:
+            assert len(doc["raw_text"]) > 100, f"{doc['title']} raw_text too short"
+            assert doc["doc_type"], f"{doc['title']} missing doc_type"
+            assert doc["title"], f"Doc missing title"
+            assert doc["source"], f"{doc['title']} missing source"
