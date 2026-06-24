@@ -153,10 +153,8 @@ def seed():
 
         docs = load_seed_docs()
         count = import_to_mysql(docs)
-        if count == 0:
-            return jsonify({"status": "ok", "imported": 0, "message": "种子数据已存在，无需重复导入"})
 
-        # 向量化
+        # 无论是否新导入，都处理所有未向量化的文档
         builder = FinKnowledgeBuilder()
         processed = builder.process_unprocessed_docs(limit=limit)
         return jsonify({
