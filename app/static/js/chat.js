@@ -148,8 +148,8 @@ function sendQuestion() {
             ${STEPS.map((s, i) => `
                 <div id="${s.id}" style="padding:4px 0;display:flex;align-items:center;gap:8px;
                     ${i === 0 ? 'opacity:1' : 'opacity:0.4'}">
-                    <span class="step-indicator step-active" style="width:20px;text-align:center">
-                        <span class="step-hourglass">${i === 0 ? '⏳' : '○'}</span>
+                    <span class="step-indicator ${i === 0 ? 'step-active' : ''}" style="width:20px;text-align:center">
+                        ${i === 0 ? '<span class="step-hourglass">⏳</span>' : '○'}
                     </span>
                     <span>${s.icon} ${s.label}</span>
                 </div>
@@ -161,18 +161,21 @@ function sendQuestion() {
     const advanceStep = function() {
         currentStep++;
         if (currentStep < STEPS.length) {
-            // 完成上一步
+            // 完成上一步：绿色打勾，去除动画
             const prev = document.getElementById(STEPS[currentStep - 1].id);
             if (prev) {
-                prev.querySelector('.step-indicator').textContent = '✅';
+                prev.querySelector('.step-indicator').innerHTML = '✅';
+                prev.querySelector('.step-indicator').className = 'step-indicator';
                 prev.style.opacity = '0.6';
                 prev.style.color = '#52c41a';
             }
-            // 激活当前步
+            // 激活当前步：旋转 ⏳
             const cur = document.getElementById(STEPS[currentStep].id);
             if (cur) {
                 cur.style.opacity = '1';
-                cur.querySelector('.step-indicator').textContent = '⏳';
+                cur.style.color = '';
+                cur.querySelector('.step-indicator').className = 'step-indicator step-active';
+                cur.querySelector('.step-indicator').innerHTML = '<span class="step-hourglass">⏳</span>';
             }
         }
     };
