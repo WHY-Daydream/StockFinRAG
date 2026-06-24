@@ -14,6 +14,7 @@ from retrieval.cache import ResultCache
 class AgentState(TypedDict):
     question: str
     session_id: str
+    conversation_history: list       # 多轮对话历史
     retrieved_context: list
     analysis_result: str
     final_answer: str
@@ -136,13 +137,26 @@ def analysis_node(state: AgentState) -> dict:
         [f"[{c['type']} | score={c.get('rerank_score', c['score']):.4f}]\n{c['content']}"
          for c in context]
     )
+    # 构建对话历史文本（在 prompt 之前添加）
+    history_text = ""
+    history = state.get("conversation_history", [])
+    if history:
+        lines = []
+        for msg in history:
+            role_label = "用户" if msg.get("role") == "user" else "助手"
+            lines.append(f"{role_label}：{msg.get('content', '')}")
+        history_text = "\n".join(lines)
+
     client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
-    prompt = f"""你是一位专业的金融分析师助手。请基于以下检索到的金融资料，回答用户的问题。
+    prompt = f"""你是一位专业的金融分析师助手。请基于以下检索到的金融资料和对话历史，回答用户的问题。
+
+## 对话历史
+{history_text or '（无历史记录）'}
 
 ## 检索到的上下文
 {context_text}
 
-## 用户问题
+## 当前问题
 {state['question']}
 
 ## 要求
@@ -150,6 +164,7 @@ def analysis_node(state: AgentState) -> dict:
 2. 回答必须基于事实，不得编造数据
 3. 对于财务数据，需要注明来源和时间
 4. 使用简洁清晰的语言
+5. 如果当前问题可以结合历史对话理解，请综合利用上下文
 """
     try:
         resp = client.chat.completions.create(

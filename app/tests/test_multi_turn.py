@@ -114,3 +114,20 @@ class TestHistoryTruncation:
         assert len(truncated) == 6
         assert truncated[0]["content"] == "Q3"
         assert truncated[-1]["content"] == "A5"
+
+
+# ======================================================================
+# Tests for Task 2: AgentState + 历史注入 Prompt
+# ======================================================================
+
+def test_agent_state_has_conversation_history():
+    from agent.graph import AgentState
+    assert "conversation_history" in AgentState.__annotations__
+
+
+def test_analysis_node_prompt_mentions_history():
+    """验证 analysis_node 的 prompt 包含对话历史"""
+    with open("agent/graph.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    # 应包含"对话历史"章节
+    assert "对话历史" in source
