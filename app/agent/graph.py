@@ -20,10 +20,76 @@ class AgentState(TypedDict):
     compliance_check: str
     compliance_reason: str
     start_time: float  # 用于计算 latency_ms
+    strategy_type: str            # "simple"|"abstract"|"complex"
+    hyde_doc: str                 # HyDE 假设文档
+    sub_questions: list           # Query Decomposition 子问题
+
+
+def judge_node(state: AgentState) -> dict:
+    """判断问题类型，路由检索策略"""
+    from retrieval.query_analyzer import QueryAnalyzer
+    qa = QueryAnalyzer()
+    result = qa.analyze(state["question"])
+    strategy = result["type"]
+    logger.info(f"Judge: '{state['question'][:40]}' -> {strategy}")
+
+    # complex 问题自动分解
+    sub_questions = []
+    if strategy == "complex":
+        sub_questions = _decompose_question(state["question"])
+
+    return {"strategy_type": strategy, "sub_questions": sub_questions}
+
+
+def _generate_hyde(question: str) -> str:
+    """HyDE: LLM 生成假设文档"""
+    hyde_prompt = (
+        "请根据以下金融问题，生成一段假设性的回答文档。\n"
+        "要求：语气客观、信息密度高、长度约50-100字。仅输出回答本身。\n\n"
+        f"问题：{question}"
+    )
+    try:
+        client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+        resp = client.chat.completions.create(
+            model=Config.LLM_MODEL,
+            messages=[{"role": "user", "content": hyde_prompt}],
+            temperature=0.1,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning(f"HyDE failed: {e}")
+        return question  # 降级为原问题
+
+
+def _decompose_question(question: str) -> list:
+    """复杂问题拆解为子问题"""
+    prompt = (
+        "你是一个金融问题分析专家。请分析以下问题包含几个独立的知识维度，"
+        "将其拆解为2-4个独立的子问题，每个子问题只关注一个维度。\n\n"
+        "输出 JSON: {\"sub_questions\": [\"子问题1\", \"子问题2\"]}\n\n"
+        f"问题：{question}"
+    )
+    try:
+        client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+        resp = client.chat.completions.create(
+            model=Config.LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+        result = json.loads(resp.choices[0].message.content)
+        return result.get("sub_questions", [question])[:4]
+    except Exception as e:
+        logger.warning(f"Decompose failed: {e}")
+        return [question]
 
 
 def retrieval_node(state: AgentState) -> dict:
-    """检索 Agent: 混合检索或缓存命中"""
+    """检索 Agent: 根据策略路由"""
+    from retrieval.hybrid_searcher import HybridSearcher
+    from retrieval.context_enricher import ContextEnricher
+    from retrieval.cache import ResultCache
+
     cache = ResultCache()
     cached = cache.get(state["question"])
     if cached:
@@ -31,9 +97,31 @@ def retrieval_node(state: AgentState) -> dict:
         return {"retrieved_context": cached}
 
     searcher = HybridSearcher()
-    results = searcher.search(state["question"], top_k=10)
-    cache.set(state["question"], results)
-    return {"retrieved_context": results}
+    enricher = ContextEnricher()
+    strategy = state.get("strategy_type", "simple")
+
+    if strategy == "abstract":
+        hyde_doc = _generate_hyde(state["question"])
+        results = searcher.search(hyde_doc, top_k=10)
+        logger.info(f"HyDE: '{state['question'][:30]}' -> '{hyde_doc[:30]}'")
+    elif strategy == "complex":
+        sub_questions = state.get("sub_questions", [state["question"]])
+        all_results = []
+        for sq in sub_questions:
+            all_results.extend(searcher.search(sq, top_k=10))
+        seen = set()
+        results = []
+        for h in all_results:
+            key = (h["doc_id"], h.get("chunk_id"))
+            if key not in seen:
+                seen.add(key)
+                results.append(h)
+    else:
+        results = searcher.search(state["question"], top_k=10)
+
+    enriched = enricher.enrich(results, window_size=2)
+    cache.set(state["question"], enriched)
+    return {"retrieved_context": enriched}
 
 
 def analysis_node(state: AgentState) -> dict:
@@ -139,13 +227,15 @@ def format_output(state: AgentState) -> dict:
 
 def build_qa_graph():
     builder = StateGraph(AgentState)
+    builder.add_node("judge", judge_node)
     builder.add_node("retrieval", retrieval_node)
     builder.add_node("analysis", analysis_node)
     builder.add_node("compliance", compliance_node)
     builder.add_node("reject_handler", reject_handler)
     builder.add_node("format_output", format_output)
 
-    builder.set_entry_point("retrieval")
+    builder.set_entry_point("judge")
+    builder.add_edge("judge", "retrieval")
     builder.add_edge("retrieval", "analysis")
     builder.add_edge("analysis", "compliance")
     builder.add_conditional_edges("compliance", route_after_compliance)
