@@ -2,7 +2,7 @@
     {
         "url": "https://www.gov.cn/zhengce/",
         "type": "政策",
-        "title": "国务院政策文件",
+        "title": "国务院最新政策文件",
         "discover": true,
         "max_articles": 5,
         "title_prefix": "国务院政策"
@@ -10,17 +10,9 @@
     {
         "url": "https://www.csrc.gov.cn/csrc/c100028/common_list.shtml",
         "type": "法规",
-        "title": "证监会投资者保护政策",
+        "title": "证监会最新政策",
         "discover": true,
         "max_articles": 5,
         "title_prefix": "证监会政策"
-    },
-    {
-        "url": "https://www.szse.cn/lawrules/rule/",
-        "type": "法规",
-        "title": "深交所业务规则",
-        "discover": true,
-        "max_articles": 3,
-        "title_prefix": "深交所规则"
     }
 ]

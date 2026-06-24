@@ -21,10 +21,27 @@ def init_scheduler(app):
     def update_indices_evening():
         _run_update_indices()
 
-    # 新闻爬取 — 每 30 分钟
-    @scheduler.scheduled_job("interval", minutes=30, id="crawl_news")
-    def crawl_news():
-        logger.info("[Scheduler] Starting news crawl...")
+    # 财经新闻 — 每小时（通过 AKShare 获取今日最新新闻）
+    @scheduler.scheduled_job("interval", hours=1, id="fetch_news")
+    def fetch_news():
+        logger.info("[Scheduler] Fetching latest financial news...")
+        try:
+            from data_providers.akshare_provider import fetch_latest_news, save_news
+            news = fetch_latest_news(limit=10)
+            if news:
+                saved = save_news(news)
+                logger.info(f"[Scheduler] Saved {saved} new news articles")
+                if saved > 0:
+                    _run_vectorize()
+            else:
+                logger.info("[Scheduler] No new news")
+        except Exception as e:
+            logger.error(f"[Scheduler] News fetch failed: {e}")
+
+    # 网页爬虫 — 每 6 小时（发现模式，获取政策法规更新）
+    @scheduler.scheduled_job("interval", hours=6, id="crawl_web")
+    def crawl_web():
+        logger.info("[Scheduler] Starting web crawl...")
         try:
             from crawler.financial_crawler import batch_crawl
             ids = batch_crawl()

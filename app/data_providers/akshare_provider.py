@@ -1,6 +1,7 @@
 """AKShare 金融数据采集封装"""
 from typing import List, Dict, Optional
 from datetime import datetime, date
+import hashlib
 from loguru import logger
 import sys, os
 
@@ -74,6 +75,78 @@ def save_indices(records: List[Dict]) -> int:
     finally:
         conn.close()
     return inserted
+
+
+def fetch_latest_news(limit: int = 10) -> List[Dict]:
+    """
+    获取东方财富最新财经新闻，返回结构化数据。
+    每条新闻包含：标题、摘要、发布时间、URL、正文（通过爬虫获取）
+    """
+    try:
+        import akshare as ak
+    except ImportError:
+        logger.warning("akshare not installed, returning empty")
+        return []
+
+    try:
+        df = ak.stock_info_global_em()
+        if df.empty:
+            return []
+
+        records = []
+        for _, row in df.head(limit).iterrows():
+            vals = [row.iloc[i] for i in range(len(row))]
+            title = str(vals[0]) if len(vals) > 0 else ""
+            summary = str(vals[1]) if len(vals) > 1 else ""
+            pub_time = str(vals[2]) if len(vals) > 2 else ""
+            url = str(vals[3]) if len(vals) > 3 else ""
+
+            # 标题和摘要合并作为正文
+            content = f"{title}\n\n{summary}" if summary else title
+            records.append({
+                "title": title[:200],
+                "doc_type": "新闻",
+                "source": url,
+                "raw_text": content,
+                "summary": summary[:300],
+                "file_hash": hashlib.md5(content.encode("utf-8")).hexdigest(),
+                "publish_date": datetime.now().date(),
+            })
+        logger.info(f"Fetched {len(records)} news from akshare")
+        return records
+    except Exception as e:
+        logger.error(f"Failed to fetch news: {e}")
+        return []
+
+
+def save_news(news_list: List[Dict]) -> int:
+    """保存新闻到 MySQL documents 表（自动去重）"""
+    from db import get_mysql
+
+    if not news_list:
+        return 0
+    conn = get_mysql()
+    saved = 0
+    try:
+        with conn.cursor() as cur:
+            for news in news_list:
+                cur.execute("SELECT id FROM documents WHERE file_hash=%s", (news["file_hash"],))
+                if cur.fetchone():
+                    continue
+                cur.execute(
+                    """INSERT INTO documents
+                       (doc_type, title, source, publish_date, summary, raw_text, file_hash, chunk_count)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, 0)""",
+                    (news["doc_type"], news["title"], news["source"],
+                     news["publish_date"], news["summary"], news["raw_text"],
+                     news["file_hash"]),
+                )
+                saved += 1
+        conn.commit()
+        logger.info(f"Saved {saved} new news articles")
+    finally:
+        conn.close()
+    return saved
 
 
 def update_all_indices():
