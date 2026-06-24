@@ -65,13 +65,13 @@ try:
     # 2. 预加载 HybridSearcher（SentencTransformer + CrossEncoder + BM25 索引）
     logger.info("Warm-up: 加载检索模型 (SentenceTransformer + CrossEncoder)...")
     from retrieval.hybrid_searcher import HybridSearcher
-    _searcher = HybridSearcher()
+    _ = HybridSearcher()  # 触发单例初始化，不保留额外引用
     logger.info("Warm-up: 检索模型就绪")
 
     # 3. 预编译 LangGraph
     logger.info("Warm-up: 编译 LangGraph...")
     from agent.graph import get_qa_graph
-    _graph = get_qa_graph()
+    _ = get_qa_graph()  # 触发编译，不保留额外引用
     logger.info("Warm-up: LangGraph 就绪")
 
 except Exception as e:

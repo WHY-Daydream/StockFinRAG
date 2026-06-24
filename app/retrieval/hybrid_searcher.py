@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+import threading
 from pymilvus import Collection
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from loguru import logger
@@ -35,10 +36,13 @@ def _rrf_merge(results_list: List[List[Dict]], top_k: int = 10, k: int = 60) -> 
 
 class HybridSearcher:
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
@@ -55,11 +59,22 @@ class HybridSearcher:
         self.reranker = CrossEncoder(Config.RERANK_MODEL)
         from retrieval.bm25_searcher import BM25Searcher
         self._bm25_searcher = BM25Searcher()
-        if not self._bm25_searcher.load():
-            logger.info("No BM25 index found, building...")
+        _need_rebuild = not self._bm25_searcher.load()
+        # 检查脏标记——数据更新后标记为脏，延迟重建
+        if not _need_rebuild:
+            try:
+                from retrieval.cache import ResultCache
+                if ResultCache().redis.get("bm25:stale"):
+                    _need_rebuild = True
+                    logger.info("BM25 index is stale, will rebuild...")
+            except Exception:
+                pass
+        if _need_rebuild:
             try:
                 self._bm25_searcher.build_from_chunks()
                 self._bm25_searcher.save()
+                from retrieval.cache import ResultCache
+                ResultCache().redis.delete("bm25:stale")
             except Exception as e:
                 logger.warning(f"BM25 index build failed (non-fatal): {e}")
         self._initialized = True

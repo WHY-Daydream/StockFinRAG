@@ -88,15 +88,13 @@ class FinKnowledgeBuilder:
                     )
                     conn.commit()
                 logger.info(f"Done: {len(parent_texts)} parents + {len(child_texts)} children")
-            # 处理完成后触发 BM25 索引重建
+            # 标记 BM25 索引为脏，下次检索时延迟重建
             try:
-                from retrieval.bm25_searcher import BM25Searcher
-                bm25 = BM25Searcher()
-                bm25.build_from_chunks()
-                bm25.save()
-                logger.info("BM25 index rebuilt after ingestion")
+                from retrieval.cache import ResultCache
+                ResultCache().redis.setex("bm25:stale", 86400, "1")
+                logger.info("BM25 index marked stale, will rebuild on next search")
             except Exception as e:
-                logger.warning(f"BM25 rebuild failed (non-fatal): {e}")
+                logger.warning(f"BM25 stale marker failed: {e}")
             return len(docs)
         finally:
             conn.close()

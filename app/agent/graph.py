@@ -3,12 +3,20 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from openai import OpenAI
 import json
-import time
 from loguru import logger
 import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
 from retrieval.hybrid_searcher import HybridSearcher
 from retrieval.cache import ResultCache
+
+# 共用 LLM 客户端（单例模式，避免每次调用创建新实例）
+_llm_client = None
+
+def get_llm_client():
+    global _llm_client
+    if _llm_client is None:
+        _llm_client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+    return _llm_client
 
 
 class AgentState(TypedDict):
@@ -50,7 +58,7 @@ def _generate_hyde(question: str) -> str:
         f"问题：{question}"
     )
     try:
-        client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+        client = get_llm_client()
         resp = client.chat.completions.create(
             model=Config.LLM_MODEL,
             messages=[{"role": "user", "content": hyde_prompt}],
@@ -71,7 +79,7 @@ def _decompose_question(question: str) -> list:
         f"问题：{question}"
     )
     try:
-        client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+        client = get_llm_client()
         resp = client.chat.completions.create(
             model=Config.LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
@@ -87,9 +95,7 @@ def _decompose_question(question: str) -> list:
 
 def retrieval_node(state: AgentState) -> dict:
     """检索 Agent: 根据策略路由"""
-    from retrieval.hybrid_searcher import HybridSearcher
     from retrieval.context_enricher import ContextEnricher
-    from retrieval.cache import ResultCache
 
     cache = ResultCache()
     cached = cache.get(state["question"])
@@ -147,7 +153,7 @@ def analysis_node(state: AgentState) -> dict:
             lines.append(f"{role_label}：{msg.get('content', '')}")
         history_text = "\n".join(lines)
 
-    client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+    client = get_llm_client()
     prompt = f"""你是一位专业的金融分析师助手。请基于以下检索到的金融资料和对话历史，回答用户的问题。
 
 ## 对话历史
@@ -182,7 +188,7 @@ def analysis_node(state: AgentState) -> dict:
 
 def compliance_node(state: AgentState) -> dict:
     """合规 Agent: 检查回答是否符合金融合规要求"""
-    client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+    client = get_llm_client()
     check_prompt = f"""你是一位金融合规审核官。请审核以下分析师回答是否存在合规风险：
 
 ## 用户问题
