@@ -88,6 +88,15 @@ class FinKnowledgeBuilder:
                     )
                     conn.commit()
                 logger.info(f"Done: {len(parent_texts)} parents + {len(child_texts)} children")
+            # 处理完成后触发 BM25 索引重建
+            try:
+                from retrieval.bm25_searcher import BM25Searcher
+                bm25 = BM25Searcher()
+                bm25.build_from_chunks()
+                bm25.save()
+                logger.info("BM25 index rebuilt after ingestion")
+            except Exception as e:
+                logger.warning(f"BM25 rebuild failed (non-fatal): {e}")
             return len(docs)
         finally:
             conn.close()

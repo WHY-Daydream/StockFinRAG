@@ -205,6 +205,20 @@ def get_indices():
     return jsonify({"indices": results})
 
 
+@app.route("/api/rebuild_bm25", methods=["POST"])
+def rebuild_bm25():
+    """手动触发 BM25 索引重建"""
+    try:
+        from retrieval.bm25_searcher import BM25Searcher
+        bm25 = BM25Searcher()
+        bm25.build_from_chunks()
+        bm25.save()
+        return jsonify({"status": "ok", "message": "BM25 index rebuilt successfully"})
+    except Exception as e:
+        logger.exception("BM25 rebuild failed")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     from scheduler import init_scheduler
     init_scheduler(app)
