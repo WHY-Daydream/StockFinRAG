@@ -40,6 +40,8 @@ import traceback, sys
 from config import Config
 from db import get_mysql
 from service.qa_service import QAAnswerService
+from schemas.request import AskRequest, IngestRequest, SeedRequest, CrawlRequest
+from schemas import validate_or_error
 
 app = Flask(__name__)
 CORS(app)
@@ -79,35 +81,31 @@ def health():
 
 @app.route("/api/ask", methods=["POST"])
 def ask():
-    data = request.get_json(force=True)
-    question = data.get("question", "").strip()
-    if not question:
-        return jsonify({"error": "question is required"}), 400
+    req, err = validate_or_error(AskRequest, request.get_json(force=True))
+    if err:
+        return err
 
-    session_id = data.get("session_id", str(uuid.uuid4()))
-    history = data.get("history")  # 前端多轮对话历史（可选）
-
+    session_id = req.session_id or str(uuid.uuid4())
     try:
-        result = qa_service.ask(question, session_id, history=history)
+        result = qa_service.ask(req.question, session_id, history=req.history)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
-        logger.exception(f"Ask failed for question: {question}")
+        logger.exception(f"Ask failed for question: {req.question}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 
 @app.route("/api/ask/stream", methods=["POST"])
 def ask_stream():
     """SSE 流式回答"""
-    data = request.get_json(force=True)
-    question = data.get("question", "").strip()
-    if not question:
-        return jsonify({"error": "question is required"}), 400
-    session_id = data.get("session_id", str(uuid.uuid4()))
-    history = data.get("history")
+    req, err = validate_or_error(AskRequest, request.get_json(force=True))
+    if err:
+        return err
+
+    session_id = req.session_id or str(uuid.uuid4())
 
     def generate():
-        yield from qa_service.ask_stream(question, session_id, history=history)
+        yield from qa_service.ask_stream(req.question, session_id, history=req.history)
 
     return Response(
         generate(),
@@ -122,10 +120,11 @@ def ask_stream():
 
 @app.route("/api/ingest", methods=["POST"])
 def ingest():
+    req, err = validate_or_error(IngestRequest, request.get_json(force=True) or {})
+    if err:
+        return err
     try:
-        data = request.get_json(force=True) or {}
-        limit = data.get("limit", 10)
-        count = qa_service.ingest(limit=limit)
+        count = qa_service.ingest(limit=req.limit)
         return jsonify({"status": "ok", "processed": count})
     except Exception as e:
         logger.exception("Ingest failed")
@@ -134,10 +133,11 @@ def ingest():
 
 @app.route("/api/seed", methods=["POST"])
 def seed():
+    req, err = validate_or_error(SeedRequest, request.get_json(force=True) or {})
+    if err:
+        return err
     try:
-        data = request.get_json(force=True) or {}
-        limit = data.get("limit", 50)
-        result = qa_service.seed(limit=limit)
+        result = qa_service.seed(limit=req.limit)
         return jsonify({
             "status": "ok",
             "imported": result["imported"],
@@ -173,13 +173,13 @@ def list_documents():
 @app.route("/api/crawl", methods=["POST"])
 def crawl():
     """从配置的 URL 源抓取最新金融文档"""
+    req, err = validate_or_error(CrawlRequest, request.get_json(force=True) or {})
+    if err:
+        return err
     try:
         from crawler.financial_crawler import batch_crawl
 
-        data = request.get_json(force=True) or {}
-        config_path = data.get("config")  # 可选：自定义爬取配置
-
-        doc_ids = batch_crawl(config_path)
+        doc_ids = batch_crawl(req.config)
         return jsonify({
             "status": "ok",
             "crawled": len(doc_ids),

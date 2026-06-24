@@ -110,3 +110,30 @@ class TestValidateHelper:
             assert data["error"] == "validation_error"
             assert "field" in data["detail"][0]
             assert "msg" in data["detail"][0]
+
+
+# ---------- Integration: api_server.py uses schemas ----------
+
+def test_api_ask_imports_schemas():
+    with open("api_server.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "AskRequest" in source
+    assert "validate_or_error" in source
+
+
+def test_api_ask_route_uses_validate():
+    with open("api_server.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "validate_or_error(AskRequest" in source
+
+
+def test_api_ingest_route_uses_validate():
+    with open("api_server.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "validate_or_error(IngestRequest" in source
+
+
+def test_api_seed_route_uses_validate():
+    with open("api_server.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "validate_or_error(SeedRequest" in source
