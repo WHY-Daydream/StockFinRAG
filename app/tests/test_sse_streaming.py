@@ -23,3 +23,17 @@ def test_stream_first_event_is_valid_sse():
     first = next(gen)
     assert first.startswith("event:")
     assert "data:" in first
+
+
+def test_stream_route_exists():
+    with open("api_server.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "ask/stream" in source
+    assert "event-stream" in source
+
+
+def test_stream_route_returns_sse_headers():
+    with open("api_server.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "text/event-stream" in source
+    assert "X-Accel-Buffering" in source

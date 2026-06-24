@@ -31,7 +31,7 @@ if _embedding_model:
     if _model_cached:
         os.environ["HF_HUB_OFFLINE"] = "1"
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response
 from flask_cors import CORS
 from loguru import logger
 import uuid
@@ -94,6 +94,30 @@ def ask():
         traceback.print_exc()
         logger.exception(f"Ask failed for question: {question}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@app.route("/api/ask/stream", methods=["POST"])
+def ask_stream():
+    """SSE 流式回答"""
+    data = request.get_json(force=True)
+    question = data.get("question", "").strip()
+    if not question:
+        return jsonify({"error": "question is required"}), 400
+    session_id = data.get("session_id", str(uuid.uuid4()))
+    history = data.get("history")
+
+    def generate():
+        yield from qa_service.ask_stream(question, session_id, history=history)
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.route("/api/ingest", methods=["POST"])
