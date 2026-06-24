@@ -35,6 +35,7 @@ from flask import Flask, request, jsonify, render_template, Response, stream_wit
 from flask_cors import CORS
 from loguru import logger
 import uuid
+import time
 import traceback, sys
 
 from config import Config
@@ -50,6 +51,33 @@ app.config["SCHEDULER_ENABLED"] = os.getenv("SCHEDULER_ENABLED", "true").lower()
 
 # 服务层实例
 qa_service = QAAnswerService()
+
+# ====== 启动预热：提前加载所有模型，避免首次请求慢 ======
+logger.info("Warm-up: 开始预热模型...")
+_warmup_start = time.time()
+try:
+    # 1. 预加载 jieba 分词字典
+    logger.info("Warm-up: 加载 jieba 字典...")
+    import jieba
+    list(jieba.cut("金融合规风险GDP增速"))  # 触发字典加载
+    logger.info("Warm-up: jieba 字典就绪")
+
+    # 2. 预加载 HybridSearcher（SentencTransformer + CrossEncoder + BM25 索引）
+    logger.info("Warm-up: 加载检索模型 (SentenceTransformer + CrossEncoder)...")
+    from retrieval.hybrid_searcher import HybridSearcher
+    _searcher = HybridSearcher()
+    logger.info("Warm-up: 检索模型就绪")
+
+    # 3. 预编译 LangGraph
+    logger.info("Warm-up: 编译 LangGraph...")
+    from agent.graph import get_qa_graph
+    _graph = get_qa_graph()
+    logger.info("Warm-up: LangGraph 就绪")
+
+except Exception as e:
+    logger.warning(f"Warm-up 部分失败（非致命）: {e}")
+logger.info(f"Warm-up: 完成, 耗时 {time.time() - _warmup_start:.1f}s")
+# ====== 预热结束 ======
 
 
 @app.errorhandler(Exception)
