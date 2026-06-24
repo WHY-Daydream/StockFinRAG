@@ -62,6 +62,26 @@ def init_scheduler(app):
         except Exception as e:
             logger.error(f"[Scheduler] Policy check failed: {e}")
 
+    # 宏观经济数据（每天 9:30）
+    def fetch_macro():
+        logger.info("Scheduler: fetching macro data...")
+        from data_providers.akshare_provider import fetch_macro_gdp, fetch_macro_cpi
+        from retrieval.cache import ResultCache
+        import json
+        cache = ResultCache()
+        try:
+            gdp = fetch_macro_gdp()
+            if gdp:
+                cache.redis.setex("macro:gdp", 86400, json.dumps(gdp, ensure_ascii=False))
+            cpi = fetch_macro_cpi()
+            if cpi:
+                cache.redis.setex("macro:cpi", 86400, json.dumps(cpi, ensure_ascii=False))
+            logger.info(f"Macro data updated: {len(gdp)} GDP, {len(cpi)} CPI")
+        except Exception as e:
+            logger.error(f"fetch_macro failed: {e}")
+
+    scheduler.add_job(fetch_macro, "cron", hour=9, minute=30, id="sched_macro", replace_existing=True)
+
     scheduler.start()
     logger.info("Scheduler started with {} jobs".format(len(scheduler.get_jobs())))
 

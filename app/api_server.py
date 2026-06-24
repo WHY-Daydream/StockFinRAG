@@ -81,7 +81,7 @@ def health():
 
 @app.route("/api/ask", methods=["POST"])
 def ask():
-    req, err = validate_or_error(AskRequest, request.get_json(force=True))
+    req, err = validate_or_error(AskRequest, request.get_json(force=True) or {})
     if err:
         return err
 
@@ -98,7 +98,7 @@ def ask():
 @app.route("/api/ask/stream", methods=["POST"])
 def ask_stream():
     """SSE 流式回答"""
-    req, err = validate_or_error(AskRequest, request.get_json(force=True))
+    req, err = validate_or_error(AskRequest, request.get_json(force=True) or {})
     if err:
         return err
 
@@ -228,6 +228,24 @@ def get_indices():
     except Exception as e:
         logger.warning(f"Failed to fetch indices: {e}")
     return jsonify({"indices": results})
+
+
+@app.route("/api/macro", methods=["GET"])
+def get_macro():
+    """获取宏观经济数据"""
+    from retrieval.cache import ResultCache
+    import json
+    cache = ResultCache()
+    try:
+        gdp_data = cache.redis.get("macro:gdp")
+        cpi_data = cache.redis.get("macro:cpi")
+        return jsonify({
+            "gdp": json.loads(gdp_data) if gdp_data else [],
+            "cpi": json.loads(cpi_data) if cpi_data else [],
+        })
+    except Exception as e:
+        logger.exception("Failed to fetch macro data")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/rebuild_bm25", methods=["POST"])

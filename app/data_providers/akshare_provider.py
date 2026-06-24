@@ -170,3 +170,29 @@ def update_all_indices():
         total += save_indices(records)
     logger.info(f"Updated all indices: {total} new records")
     return total
+
+
+def fetch_macro_gdp() -> List[Dict]:
+    """获取中国GDP季度数据"""
+    import akshare as ak
+    try:
+        df = ak.macro_china_gdp()
+        records = df.tail(20).to_dict("records")
+        logger.info(f"Fetched {len(records)} GDP records")
+        return records
+    except Exception as e:
+        logger.error(f"fetch_macro_gdp failed: {e}")
+        return []
+
+
+def fetch_macro_cpi() -> List[Dict]:
+    """获取中国CPI月度数据"""
+    import akshare as ak
+    try:
+        df = ak.macro_china_cpi_yearly()
+        records = df.tail(24).to_dict("records")
+        logger.info(f"Fetched {len(records)} CPI records")
+        return records
+    except Exception as e:
+        logger.error(f"fetch_macro_cpi failed: {e}")
+        return []

@@ -69,3 +69,16 @@ class TestSeedDocs:
             assert doc["doc_type"], f"{doc['title']} missing doc_type"
             assert doc["title"], f"Doc missing title"
             assert doc["source"], f"{doc['title']} missing source"
+
+
+def test_akshare_provider_has_macro_functions():
+    with open("data_providers/akshare_provider.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "fetch_macro_gdp" in source
+    assert "fetch_macro_cpi" in source
+
+
+def test_scheduler_has_macro_job():
+    with open("scheduler.py", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "sched_macro" in source
