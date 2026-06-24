@@ -137,27 +137,58 @@ function sendQuestion() {
     container.innerHTML += `<div class="message message-user"><div class="bubble">${escapeHtml(question)}</div></div>`;
     saveMessage('user', question, null);
 
-    // 分步进度提示：每隔几秒切换文字，让用户知道正在处理
-    const LOADING_STEPS = [
-        { text: '🔍 正在检索知识库...', delay: 3000 },
-        { text: '🤔 AI 正在分析问题...', delay: 6000 },
-        { text: '✅ 正在合规审核...', delay: 9000 },
-        { text: '📝 即将完成...', delay: 999999 },
+    // 进度清单：每一步完成后保留打勾，不走回头路
+    const STEPS = [
+        { id: 'step-search',  label: '检索知识库', icon: '🔍' },
+        { id: 'step-analyze', label: 'AI 分析问题', icon: '🤔' },
+        { id: 'step-comply',  label: '合规审核', icon: '✅' },
     ];
     container.innerHTML += `<div class="message message-assistant" id="loading-msg">
-        <div class="bubble loading-pulse"><span id="loading-text">${LOADING_STEPS[0].text}</span></div></div>`;
+        <div class="bubble" style="min-width:220px">
+            ${STEPS.map((s, i) => `
+                <div id="${s.id}" style="padding:4px 0;display:flex;align-items:center;gap:8px;
+                    ${i === 0 ? '' : 'opacity:0.4'}"}>
+                    <span class="step-indicator" style="width:20px;text-align:center">
+                        ${i === 0 ? '⏳' : '○'}
+                    </span>
+                    <span>${s.icon} ${s.label}</span>
+                </div>
+            `).join('')}
+        </div></div>`;
     container.scrollTop = container.scrollHeight;
-    // 启动进度轮换定时器
-    let stepIdx = 0;
-    const stepTimer = setInterval(function() {
-        stepIdx++;
-        if (stepIdx < LOADING_STEPS.length) {
-            const el = document.getElementById('loading-text');
-            if (el) el.textContent = LOADING_STEPS[stepIdx].text;
+    // 逐步骤亮起
+    let currentStep = 0;
+    const advanceStep = function() {
+        currentStep++;
+        if (currentStep < STEPS.length) {
+            // 完成上一步
+            const prev = document.getElementById(STEPS[currentStep - 1].id);
+            if (prev) {
+                prev.querySelector('.step-indicator').textContent = '✅';
+                prev.style.opacity = '0.6';
+                prev.style.color = '#52c41a';
+            }
+            // 激活当前步
+            const cur = document.getElementById(STEPS[currentStep].id);
+            if (cur) {
+                cur.style.opacity = '1';
+                cur.querySelector('.step-indicator').textContent = '⏳';
+            }
         }
-    }, 3000);
-    // 保存 timer ID 以便完成后清理
-    window._loadingTimer = stepTimer;
+    };
+    window._loadingTimer = setInterval(advanceStep, 3500);
+    // 完成后全部打勾
+    window._finishSteps = function() {
+        if (window._loadingTimer) { clearInterval(window._loadingTimer); window._loadingTimer = null; }
+        STEPS.forEach(function(s, i) {
+            const el = document.getElementById(s.id);
+            if (el) {
+                el.querySelector('.step-indicator').textContent = '✅';
+                el.style.opacity = i < STEPS.length - 1 ? '0.6' : '1';
+                el.style.color = '#52c41a';
+            }
+        });
+    };
 
     let sessionId = getCurrentSession();
     if (!sessionId) {
@@ -176,7 +207,7 @@ function sendQuestion() {
     })
     .then(r => r.json())
     .then(data => {
-        if (window._loadingTimer) { clearInterval(window._loadingTimer); window._loadingTimer = null; }
+        if (window._finishSteps) window._finishSteps();
         const loading = document.getElementById('loading-msg');
         if (loading) loading.remove();
         const complianceHtml = data.compliance === 'pass'
@@ -188,7 +219,7 @@ function sendQuestion() {
         container.scrollTop = container.scrollHeight;
     })
     .catch(err => {
-        if (window._loadingTimer) { clearInterval(window._loadingTimer); window._loadingTimer = null; }
+        if (window._finishSteps) window._finishSteps();
         const loading = document.getElementById('loading-msg');
         if (loading) loading.remove();
         container.innerHTML += `<div class="message message-assistant"><div class="bubble">❌ 请求失败：${escapeHtml(err.message)}</div></div>`;
