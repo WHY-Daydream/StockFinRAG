@@ -72,6 +72,10 @@ def save_indices(records: List[Dict]) -> int:
                     inserted += 1
         conn.commit()
         logger.info(f"Saved {inserted} index records")
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Save indices failed, rolled back: {e}")
+        return 0
     finally:
         conn.close()
     return inserted
@@ -144,6 +148,10 @@ def save_news(news_list: List[Dict]) -> int:
                 saved += 1
         conn.commit()
         logger.info(f"Saved {saved} new news articles")
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Save news failed, rolled back: {e}")
+        return 0
     finally:
         conn.close()
     return saved
