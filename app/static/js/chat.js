@@ -202,10 +202,20 @@ function sendQuestionStream() {
         if (idx === undefined) return;
         if (idx > 0) {
             var prev = document.getElementById(STEPS[idx-1].id);
-            if (prev) { prev.querySelector('.step-indicator').textContent = '✅'; prev.style.opacity = '0.6'; }
+            if (prev) {
+                var prevInd = prev.querySelector('.step-indicator');
+                prevInd.textContent = '✅';
+                prevInd.className = 'step-indicator';
+                prev.style.opacity = '0.6';
+            }
         }
         var cur = document.getElementById(STEPS[idx].id);
-        if (cur) { cur.style.opacity = '1'; cur.querySelector('.step-indicator').innerHTML = '<span class="step-hourglass">⏳</span>'; }
+        if (cur) {
+            cur.style.opacity = '1';
+            var curInd = cur.querySelector('.step-indicator');
+            curInd.innerHTML = '<span class="step-hourglass">⏳</span>';
+            curInd.className = 'step-indicator step-active';
+        }
         container.scrollTop = container.scrollHeight;
     }
 
@@ -229,7 +239,12 @@ function sendQuestionStream() {
     function finishSteps() {
         STEPS.forEach(function(s, i) {
             var el = document.getElementById(s.id);
-            if (el) { el.querySelector('.step-indicator').textContent = '✅'; el.style.opacity = i < STEPS.length-1 ? '0.6' : '1'; }
+            if (el) {
+                var ind = el.querySelector('.step-indicator');
+                ind.innerHTML = '✅';
+                ind.className = 'step-indicator';
+                el.style.opacity = i < STEPS.length-1 ? '0.6' : '1';
+            }
         });
     }
 
