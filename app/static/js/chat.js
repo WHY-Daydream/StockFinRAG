@@ -1,20 +1,39 @@
 const SESSIONS_KEY = 'finrag_sessions';
 const CURRENT_KEY = 'finrag_current_session';
+const MAX_SESSIONS = 50;
 
 function getSessions() {
-    return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+    try {
+        return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+    } catch (e) {
+        return [];
+    }
 }
 
 function saveSessions(sessions) {
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    try {
+        // 限制最大会话数，防止 localStorage 溢出
+        if (sessions.length > MAX_SESSIONS) {
+            sessions = sessions.slice(0, MAX_SESSIONS);
+        }
+        localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    } catch (e) {
+        // localStorage 不可用或已满，静默忽略
+    }
 }
 
 function getCurrentSession() {
-    return localStorage.getItem(CURRENT_KEY) || '';
+    try {
+        return localStorage.getItem(CURRENT_KEY) || '';
+    } catch (e) {
+        return '';
+    }
 }
 
 function setCurrentSession(id) {
-    localStorage.setItem(CURRENT_KEY, id);
+    try {
+        localStorage.setItem(CURRENT_KEY, id);
+    } catch (e) {}
 }
 
 function generateId() {
@@ -79,14 +98,14 @@ function newSession() {
     clearMessages();
 }
 
-function saveMessage(role, content, compliance) {
+function saveMessage(role, content, compliance, compliance_reason) {
     const id = getCurrentSession();
     if (!id) return;
     const sessions = getSessions();
     const idx = sessions.findIndex(s => s.id === id);
     if (idx === -1) return;
     if (!sessions[idx].messages) sessions[idx].messages = [];
-    sessions[idx].messages.push({ role, content, compliance });
+    sessions[idx].messages.push({ role, content, compliance, compliance_reason });
     sessions[idx].preview = content.slice(0, 30) + (content.length > 30 ? '...' : '');
     saveSessions(sessions);
 }
@@ -106,7 +125,7 @@ function loadMessages(sessionId) {
         } else {
             const complianceHtml = m.compliance === 'pass'
                 ? '<div class="compliance-pass">✅ 合规审核通过</div>'
-                : m.compliance ? `<div class="compliance-reject">⛔ ${escapeHtml(m.compliance)}</div>` : '';
+                : m.compliance ? `<div class="compliance-reject">⛔ ${escapeHtml(m.compliance_reason || '合规未通过')}</div>` : '';
             container.innerHTML += `<div class="message message-assistant"><div class="bubble">${marked.parse(m.content)}${complianceHtml}</div></div>`;
         }
     });
@@ -218,7 +237,7 @@ function sendQuestion() {
             : `<div class="compliance-reject">⛔ ${escapeHtml(data.compliance_reason || '合规未通过')}</div>`;
         container.innerHTML += `<div class="message message-assistant"><div class="bubble">
             ${marked.parse(data.answer || '(无回答)')}${complianceHtml}</div></div>`;
-        saveMessage('assistant', data.answer || '(无回答)', data.compliance || '');
+        saveMessage('assistant', data.answer || '(无回答)', data.compliance || '', data.compliance_reason || '');
         container.scrollTop = container.scrollHeight;
     })
     .catch(err => {
