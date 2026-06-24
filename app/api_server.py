@@ -61,6 +61,11 @@ def index():
     return render_template("index.html", active_page="chat")
 
 
+@app.route("/favicon.ico", methods=["GET"])
+def favicon():
+    return "", 204
+
+
 @app.route("/api/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "service": "StockFinRAG"})

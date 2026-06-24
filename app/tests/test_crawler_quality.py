@@ -124,3 +124,28 @@ class TestLinkDiscovery:
         </body></html>"""
         links = self.crawler._discover_article_links(html, "https://www.gov.cn")
         assert len(links) == 1
+
+
+class TestTitleExtraction:
+    """爬虫应从页面 <title> 提取真实标题"""
+
+    def setup_method(self):
+        self.crawler = FinancialCrawler()
+
+    def test_extract_title_from_html(self):
+        """能从 HTML 中提取标题"""
+        html = "<html><head><title>国务院关于加强金融监管的通知 - 中国政府网</title></head><body></body></html>"
+        title = self.crawler._extract_title(html)
+        assert title == "国务院关于加强金融监管的通知"
+
+    def test_extract_title_short_fallback(self):
+        """标题太短时返回默认值"""
+        html = "<html><head><title>首页</title></head><body></body></html>"
+        title = self.crawler._extract_title(html, "默认标题")
+        assert title == "默认标题"
+
+    def test_extract_title_no_title_tag(self):
+        """没有 title 标签时返回默认值"""
+        html = "<html><body><p>no title</p></body></html>"
+        title = self.crawler._extract_title(html, "未知文章")
+        assert title == "未知文章"

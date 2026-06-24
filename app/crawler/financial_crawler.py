@@ -44,6 +44,18 @@ class FinancialCrawler:
         # 最大重试次数
         self.max_retries = 2
 
+    def _extract_title(self, html: str, default: str = "文章") -> str:
+        """从 HTML 中提取 <title> 标签内容"""
+        import re
+        match = re.search(r'<title[^>]*>(.*?)</title>', html, re.I | re.S)
+        if match:
+            title = match.group(1).strip()
+            # 清洗：去掉网站名称后缀（如 " - 东方财富"、" | 中国政府网"）
+            title = re.split(r'\s*[-–—|│>]\s*', title)[0].strip()
+            if title and len(title) >= 4:
+                return title[:200]
+        return default
+
     def _discover_article_links(self, html: str, base_url: str) -> List[str]:
         """
         从 HTML 中发现文章链接。
@@ -347,13 +359,22 @@ def batch_crawl(config_path: str = None) -> List[int]:
 
             for j, article_url in enumerate(article_urls):
                 logger.info(f"  [{j+1}/{len(article_urls)}] Fetching: {article_url}")
+                # 先请求 HTML 提取真实标题
+                article_title = source.get("title_prefix", "") or source["title"]
+                try:
+                    resp_title = crawler.session.get(article_url, timeout=crawler.timeout)
+                    if resp_title.ok:
+                        extracted = crawler._extract_title(resp_title.text)
+                        if extracted:
+                            article_title = extracted
+                except Exception:
+                    pass
+                # 再获取正文
                 text = crawler.fetch_url(article_url)
                 if text is None:
                     continue
-                # 从文章链接提取标题后缀
-                prefix = source.get("title_prefix", "") or source["title"]
                 doc = {
-                    "title": f"{prefix} #{j+1}",
+                    "title": article_title[:200],
                     "doc_type": source.get("type", "知识"),
                     "source": article_url,
                     "raw_text": text,
