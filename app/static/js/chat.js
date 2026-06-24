@@ -209,6 +209,23 @@ function sendQuestionStream() {
         container.scrollTop = container.scrollHeight;
     }
 
+    function updateStepTiming(data) {
+        try {
+            var info = JSON.parse(data);
+            var map = { retrieving: 0, analyzing: 1, checking: 2 };
+            var idx = map[info.s];
+            if (idx === undefined) return;
+            var el = document.getElementById(STEPS[idx].id);
+            if (!el) return;
+            var labelSpan = el.querySelector('span:last-child');
+            if (labelSpan) {
+                var text = labelSpan.textContent || labelSpan.innerText;
+                text = text.replace(/\s*\([\d.]+s\)$/, '');  // 移除旧时间
+                labelSpan.textContent = text + ' (' + info.d + 's)';
+            }
+        } catch(e) {}
+    }
+
     function finishSteps() {
         STEPS.forEach(function(s, i) {
             var el = document.getElementById(s.id);
@@ -236,6 +253,7 @@ function sendQuestionStream() {
                 else if (line.startsWith('data: ')) {
                     var data = line.slice(6);
                     if (eventType === 'step') { updateStep(data); }
+                    else if (eventType === 'timing') { updateStepTiming(data); }
                     else if (eventType === 'token') {
                         answerText += data.replace(/\\n/g, '\n');
                         document.getElementById(bubbleId).innerHTML = marked.parse(answerText) + '<span class="stream-cursor">|</span>';
@@ -243,8 +261,9 @@ function sendQuestionStream() {
                     } else if (eventType === 'done') {
                         var result = JSON.parse(data);
                         finishSteps();
+                        var totalHtml = result.total_duration ? '<div style="font-size:12px;color:#999;margin-top:4px">⏱ 总耗时 ' + result.total_duration + 's</div>' : '';
                         var complianceHtml = result.compliance === 'pass' ? '<div class="compliance-pass">✅ 合规审核通过</div>' : '<div class="compliance-reject">⛔ ' + escapeHtml(result.compliance_reason || '') + '</div>';
-                        document.getElementById(bubbleId).innerHTML = marked.parse(result.answer) + complianceHtml;
+                        document.getElementById(bubbleId).innerHTML = marked.parse(result.answer) + totalHtml + complianceHtml;
                         saveMessage('assistant', result.answer || '', result.compliance || '', result.compliance_reason || '');
                         container.scrollTop = container.scrollHeight;
                     }

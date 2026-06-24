@@ -79,20 +79,17 @@ class QAAnswerService:
 
         yield "event: step\ndata: retrieving\n\n"
         conversation_history = self._get_history(session_id, frontend_history=history)
-        t0 = time.time()
+        t_retrieving = time.time()
         try:
             searcher = HybridSearcher()
-            t1 = time.time()
-            logger.info(f"[timing] HybridSearcher init: {t1-t0:.1f}s")
             enricher = ContextEnricher()
             results = searcher.search(question, top_k=10)
-            t2 = time.time()
-            logger.info(f"[timing] Search + enrich: {t2-t1:.1f}s")
             enriched = enricher.enrich(results, window_size=2)
         except Exception as e:
             logger.warning(f"Stream retrieval failed: {e}")
             enriched = []
-        logger.info(f"[timing] Total retrieving: {time.time()-t0:.1f}s")
+        t_retrieving = time.time() - t_retrieving
+        yield f"event: timing\ndata: {json.dumps({'s':'retrieving','d':round(t_retrieving,1)})}\n\n"
 
         yield "event: step\ndata: analyzing\n\n"
 
@@ -131,6 +128,7 @@ class QAAnswerService:
 
         full_answer = ""
         client = OpenAI(api_key=Config.DEEPSEEK_API_KEY, base_url=Config.DEEPSEEK_BASE_URL)
+        t_analyzing = time.time()
         try:
             stream = client.chat.completions.create(
                 model=Config.LLM_MODEL,
@@ -150,7 +148,11 @@ class QAAnswerService:
             yield f"event: token\ndata: {err_msg}\n\n"
             full_answer = err_msg
 
+        t_analyzing = time.time() - t_analyzing
+        yield f"event: timing\ndata: {json.dumps({'s':'analyzing','d':round(t_analyzing,1)})}\n\n"
+
         yield "event: step\ndata: checking\n\n"
+        t_checking = time.time()
         compliance_result = {"compliance": "pass", "compliance_reason": ""}
         try:
             result = compliance_node({
@@ -161,11 +163,16 @@ class QAAnswerService:
             compliance_result["compliance_reason"] = result.get("compliance_reason", "")
         except Exception as e:
             logger.error(f"Compliance check failed: {e}")
+        t_checking = time.time() - t_checking
+        yield f"event: timing\ndata: {json.dumps({'s':'checking','d':round(t_checking,1)})}\n\n"
 
+        total_duration = round(t_retrieving + t_analyzing + t_checking, 1)
         done_data = json.dumps({
             "answer": full_answer,
             "compliance": compliance_result["compliance"],
             "compliance_reason": compliance_result["compliance_reason"],
+            "total_duration": total_duration,
+            "timing": {"retrieving": round(t_retrieving,1), "analyzing": round(t_analyzing,1), "checking": round(t_checking,1)},
         }, ensure_ascii=False)
         yield f"event: done\ndata: {done_data}\n\n"
 
