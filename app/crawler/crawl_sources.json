@@ -1,17 +1,26 @@
 [
     {
-        "url": "https://www.gov.cn/zhengce/content/202501/content_6999999.htm",
+        "url": "https://www.gov.cn/zhengce/",
         "type": "政策",
-        "title": "关于加强监管防范风险推动资本市场高质量发展的若干意见"
+        "title": "国务院政策文件",
+        "discover": true,
+        "max_articles": 5,
+        "title_prefix": "国务院政策"
     },
     {
-        "url": "http://www.cninfo.com.cn/new/disclosure/stock?stockCode=000001",
-        "type": "财报",
-        "title": "平安银行2024年年报"
+        "url": "https://www.csrc.gov.cn/csrc/c100028/common_list.shtml",
+        "type": "法规",
+        "title": "证监会投资者保护政策",
+        "discover": true,
+        "max_articles": 5,
+        "title_prefix": "证监会政策"
     },
     {
-        "url": "https://data.eastmoney.com/report/zw/industry/20250101.html",
-        "type": "研报",
-        "title": "2025年新能源行业年度策略"
+        "url": "https://www.szse.cn/lawrules/rule/",
+        "type": "法规",
+        "title": "深交所业务规则",
+        "discover": true,
+        "max_articles": 3,
+        "title_prefix": "深交所规则"
     }
 ]

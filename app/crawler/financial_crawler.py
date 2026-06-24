@@ -44,6 +44,73 @@ class FinancialCrawler:
         # 最大重试次数
         self.max_retries = 2
 
+    def _discover_article_links(self, html: str, base_url: str) -> List[str]:
+        """
+        从 HTML 中发现文章链接。
+        通过 URL 模式、锚文本长度等信号评分，>= 30 分视为文章。
+        """
+        import re
+        from urllib.parse import urljoin, urlparse
+
+        soup = BeautifulSoup(html, "html.parser")
+        candidates = []
+
+        for a_tag in soup.find_all("a", href=True):
+            href = a_tag["href"].strip()
+            text = a_tag.get_text(strip=True)
+            full_url = urljoin(base_url, href)
+            parsed = urlparse(full_url)
+            path = parsed.path
+
+            # 跳过特殊文件
+            if re.search(r'\.(pdf|jpg|png|gif|css|js|zip|rar|docx?)$', path, re.I):
+                continue
+            # 跳过站外链接
+            if parsed.netloc and base_url not in full_url:
+                continue
+
+            score = 0
+            # URL 包含年份模式
+            if re.search(r'/20\d{2}/', path):
+                score += 20
+            # URL 包含数字路径段（5位以上数字）
+            if re.search(r'/\d{5,}', path):
+                score += 20
+            # URL 路径层级 >= 3
+            segments = [s for s in path.split('/') if s]
+            if len(segments) >= 3:
+                score += 10
+            # 锚文本长度 >= 8 个字
+            if len(text) >= 8:
+                score += 15
+            # 锚文本含关键词
+            keywords = ['政策', '法规', '通知', '意见', '解读', '办法', '条例',
+                        '规定', '公告', '指引', '管理', '发展', '改革']
+            if any(kw in text for kw in keywords):
+                score += 10
+            # 排除导航路径
+            if re.search(r'/(list|index|page|search|tag)/', path, re.I):
+                score -= 20
+            # 排除导航锚文本（精确匹配短语，避免误伤文章标题）
+            nav_phrases = ['首页', '关于我们', '联系我们', '帮助中心', '登录',
+                           '注册', 'English', '网站地图', '友情链接', '设为首页']
+            if any(kw == text.strip() for kw in nav_phrases):
+                score -= 30
+
+            # 去重
+            if not any(c[0] == full_url for c in candidates):
+                candidates.append((full_url, score, text))
+
+        # 排序、过滤低分
+        candidates.sort(key=lambda c: c[1], reverse=True)
+        seen = set()
+        result = []
+        for url, score, text in candidates:
+            if score >= 30 and url not in seen:
+                seen.add(url)
+                result.append(url)
+        return result
+
     def _chinese_ratio(self, text: str) -> float:
         """计算文本中中文字符的占比"""
         if not text.strip():
@@ -244,6 +311,7 @@ class FinancialCrawler:
 def batch_crawl(config_path: str = None) -> List[int]:
     """
     批量爬取：读取配置，逐篇抓取并保存。
+    支持 discover 模式：从列表页发现文章链接后逐个抓取。
     返回新入库的 doc_id 列表。
     """
     if config_path is None:
@@ -260,16 +328,56 @@ def batch_crawl(config_path: str = None) -> List[int]:
 
     for i, source in enumerate(sources):
         logger.info(f"[{i + 1}/{len(sources)}] Crawling: {source['title']}")
-        doc = crawler.fetch_report(
-            url=source["url"],
-            doc_type=source.get("type", "知识"),
-            title=source["title"],
-            fallback_url=source.get("fallback_url"),
-        )
-        if doc:
-            doc_id = crawler.save_document(doc)
-            doc_ids.append(doc_id)
-        # 礼貌间隔
+
+        if source.get("discover", False):
+            # --- 发现模式：从列表页找文章链接 ---
+            max_articles = source.get("max_articles", 5)
+            html = None
+            try:
+                resp = crawler.session.get(source["url"], timeout=crawler.timeout)
+                resp.raise_for_status()
+                html = resp.text
+            except Exception as e:
+                logger.error(f"Failed to fetch index page {source['url']}: {e}")
+                continue
+
+            article_urls = crawler._discover_article_links(html, source["url"])
+            article_urls = article_urls[:max_articles]
+            logger.info(f"  Discovered {len(article_urls)} article links")
+
+            for j, article_url in enumerate(article_urls):
+                logger.info(f"  [{j+1}/{len(article_urls)}] Fetching: {article_url}")
+                text = crawler.fetch_url(article_url)
+                if text is None:
+                    continue
+                # 从文章链接提取标题后缀
+                prefix = source.get("title_prefix", "") or source["title"]
+                doc = {
+                    "title": f"{prefix} #{j+1}",
+                    "doc_type": source.get("type", "知识"),
+                    "source": article_url,
+                    "raw_text": text,
+                    "summary": text[:300],
+                    "file_hash": hashlib.md5(text.encode("utf-8")).hexdigest(),
+                    "publish_date": datetime.now().date(),
+                }
+                doc_id = crawler.save_document(doc)
+                if doc_id:
+                    doc_ids.append(doc_id)
+                time.sleep(1.0)
+
+        else:
+            # --- 单页模式（原有逻辑）---
+            doc = crawler.fetch_report(
+                url=source["url"],
+                doc_type=source.get("type", "知识"),
+                title=source["title"],
+                fallback_url=source.get("fallback_url"),
+            )
+            if doc:
+                doc_id = crawler.save_document(doc)
+                doc_ids.append(doc_id)
+
         time.sleep(1.5)
 
     logger.info(f"Batch crawl complete: {len(doc_ids)} new documents")
