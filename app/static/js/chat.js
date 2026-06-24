@@ -147,9 +147,9 @@ function sendQuestion() {
         <div class="bubble loading-pulse" style="min-width:220px">
             ${STEPS.map((s, i) => `
                 <div id="${s.id}" style="padding:4px 0;display:flex;align-items:center;gap:8px;
-                    ${i === 0 ? '' : 'opacity:0.4'}">
-                    <span class="step-indicator" style="width:20px;text-align:center">
-                        ${i === 0 ? '⏳' : '○'}
+                    ${i === 0 ? 'opacity:1' : 'opacity:0.4'}">
+                    <span class="step-indicator step-active" style="width:20px;text-align:center">
+                        <span class="step-hourglass">${i === 0 ? '⏳' : '○'}</span>
                     </span>
                     <span>${s.icon} ${s.label}</span>
                 </div>

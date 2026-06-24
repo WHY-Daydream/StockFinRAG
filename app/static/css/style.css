@@ -64,3 +64,14 @@ body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #f0f2f5; 
 /* Loading pulse animation */
 .loading-pulse { animation: pulse 1.5s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* Hourglass spin animation */
+.step-active .step-hourglass {
+    display: inline-block;
+    animation: hourglass-spin 2s ease-in-out infinite;
+}
+@keyframes hourglass-spin {
+    0% { transform: rotate(0deg); }
+    50% { transform: rotate(180deg); }
+    100% { transform: rotate(180deg); }
+}
