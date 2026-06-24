@@ -56,8 +56,9 @@ for name in [Config.MILVUS_COLLECTION_PARENT, Config.MILVUS_COLLECTION_CHILD]:
 
 # 3. 创建 stock_indices 表
 print("\n[3/4] 创建 stock_indices 表...")
+conn2 = get_mysql()
 try:
-    with conn.cursor() as cur:
+    with conn2.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS stock_indices (
                 id          BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -73,10 +74,10 @@ try:
                 UNIQUE KEY uk_index_date (index_code, date)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
-        conn.commit()
+        conn2.commit()
         print("  stock_indices 表已就绪")
 finally:
-    conn.close()
+    conn2.close()
 
 # 4. 完成
 print("\n" + "=" * 50)

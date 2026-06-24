@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS documents (
     summary     TEXT,
     raw_text    LONGTEXT,
     chunk_count INT DEFAULT 0,
-    file_hash   VARCHAR(64),
+    file_hash   VARCHAR(64) UNIQUE,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_doc_type (doc_type),

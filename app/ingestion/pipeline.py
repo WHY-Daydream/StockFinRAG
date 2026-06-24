@@ -2,7 +2,7 @@ from typing import List
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 from loguru import logger
-import sys; sys.path.insert(0, "..")
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
 from db import get_mysql
 from milvus_client import connect_milvus, create_collection_if_not_exists
@@ -53,7 +53,7 @@ class FinKnowledgeBuilder:
         collection.flush()
         return insert_result.primary_keys
 
-    def process_unprocessed_docs(self, limit: int = 10):
+    def process_unprocessed_docs(self, limit: int = 10) -> int:
         conn = get_mysql()
         try:
             with conn.cursor() as cur:
@@ -88,5 +88,6 @@ class FinKnowledgeBuilder:
                     )
                     conn.commit()
                 logger.info(f"Done: {len(parent_texts)} parents + {len(child_texts)} children")
+            return len(docs)
         finally:
             conn.close()
