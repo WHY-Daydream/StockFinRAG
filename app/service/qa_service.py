@@ -6,6 +6,12 @@ from config import Config
 from retrieval.cache import ResultCache
 
 
+def _truncate_history(history: list, max_rounds: int = 3) -> list:
+    """截断历史到最近 N 轮"""
+    max_messages = max_rounds * 2
+    return history[-max_messages:] if len(history) > max_messages else history
+
+
 class QAAnswerService:
     """问答服务：缓存检查 -> LLM 调用 -> 审计日志 -> 缓存结果"""
 

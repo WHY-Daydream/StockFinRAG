@@ -26,3 +26,25 @@ class ResultCache:
         else:
             for key in self.redis.scan_iter("finrag:q:*"):
                 self.redis.delete(key)
+
+    # ── session history ──────────────────────────────────────────────
+
+    def get_session_history(self, session_id: str):
+        """获取会话历史"""
+        data = self.redis.get(f"session:{session_id}:history")
+        return json.loads(data) if data else None
+
+    def set_session_history(self, session_id: str, history: list, ttl: int = 3600):
+        """设置会话历史（TTL=1小时）"""
+        self.redis.setex(
+            f"session:{session_id}:history",
+            ttl,
+            json.dumps(history, ensure_ascii=False),
+        )
+
+    def append_to_session_history(self, session_id: str, question: str, answer: str):
+        """向会话历史追加一轮 Q&A"""
+        existing = self.get_session_history(session_id) or []
+        existing.append({"role": "user", "content": question})
+        existing.append({"role": "assistant", "content": answer})
+        self.set_session_history(session_id, existing)
