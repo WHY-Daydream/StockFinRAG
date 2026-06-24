@@ -32,6 +32,9 @@ class Config:
     EMBEDDING_MODEL = "BAAI/bge-large-zh-v1.5"
     EMBEDDING_DIM = 1024
 
+    # Project paths
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
     # Milvus collections
     MILVUS_COLLECTION_PARENT = "finrag_chunk_parent"
     MILVUS_COLLECTION_CHILD = "finrag_chunk_child"
