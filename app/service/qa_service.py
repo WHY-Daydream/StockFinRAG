@@ -136,7 +136,7 @@ class QAAnswerService:
                 delta = chunk.choices[0].delta.content
                 if delta:
                     full_answer += delta
-                    safe = delta.replace("\n", "\n").replace("\r", "\r")
+                    safe = delta.replace("\n", "\\n").replace("\r", "\\r")
                     yield f"event: token\ndata: {safe}\n\n"
         except Exception as e:
             logger.error(f"Stream API call failed: {e}")

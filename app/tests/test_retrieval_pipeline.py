@@ -19,12 +19,11 @@ def test_full_pipeline_imports():
     from retrieval.bm25_searcher import BM25Searcher
     from retrieval.query_analyzer import QueryAnalyzer
     from retrieval.context_enricher import ContextEnricher
-    from retrieval.hybrid_searcher import _rrf_merge, _tokenize_cn
+    from retrieval.hybrid_searcher import _rrf_merge
     assert BM25Searcher is not None
     assert QueryAnalyzer is not None
     assert ContextEnricher is not None
     assert callable(_rrf_merge)
-    assert callable(_tokenize_cn)
 
 
 def test_agent_state_has_new_fields():

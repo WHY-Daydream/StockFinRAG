@@ -4,10 +4,11 @@
 相邻的 chunk 记录，扩展上下文窗口。
 """
 
-from typing import Dict, List, Set
+import os
 import sys
+from typing import Dict, List, Set
 
-sys.path.insert(0, "..")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import get_mysql
 
 

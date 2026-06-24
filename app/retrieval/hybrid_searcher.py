@@ -2,7 +2,6 @@ from typing import List, Dict, Any
 from pymilvus import Collection
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from loguru import logger
-import jieba
 import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
 from milvus_client import connect_milvus, create_collection_if_not_exists
@@ -32,10 +31,6 @@ def _rrf_merge(results_list: List[List[Dict]], top_k: int = 10, k: int = 60) -> 
         item["score"] = round(score, 6)
         final.append(item)
     return final
-
-
-def _tokenize_cn(text: str) -> List[str]:
-    return list(jieba.cut(text))
 
 
 class HybridSearcher:

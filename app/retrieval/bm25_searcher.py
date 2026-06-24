@@ -51,7 +51,7 @@ class BM25Searcher:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT c.doc_id, c.id AS chunk_id, c.chunk_type,
+                    """SELECT c.doc_id, c.chunk_index AS chunk_id, c.chunk_type,
                               c.content, d.doc_type
                        FROM chunks c
                        JOIN documents d ON c.doc_id = d.id

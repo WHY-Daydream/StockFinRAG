@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 # Module-level imports (what we test)
 # ======================================================================
 
-from retrieval.hybrid_searcher import _rrf_merge, _tokenize_cn, HybridSearcher
+from retrieval.hybrid_searcher import _rrf_merge, HybridSearcher
 
 
 # ======================================================================
@@ -87,33 +87,6 @@ class TestRrfMerge:
         assert "d2" in doc_ids   # appears in ch_a (pos 1) + ch_b (pos 0) = higher RRF
         assert "d4" in doc_ids   # appears in ch_c (pos 0)
 
-
-# ======================================================================
-# Tests for _tokenize_cn
-# ======================================================================
-
-class TestTokenizeCn:
-    def test_tokenize_cn_exists(self):
-        """_tokenize_cn is importable and callable"""
-        assert callable(_tokenize_cn)
-
-    def test_tokenize_cn_returns_list_of_strings(self):
-        """splits Chinese text into tokens"""
-        text = "营业收入增长"
-        tokens = _tokenize_cn(text)
-        assert isinstance(tokens, list)
-        assert all(isinstance(t, str) for t in tokens)
-        assert len(tokens) > 0
-
-    def test_tokenize_cn_empty_string(self):
-        """empty string returns empty list"""
-        assert _tokenize_cn("") == []
-
-    def test_tokenize_cn_mixed_text(self):
-        """handles mixed Chinese and ASCII"""
-        tokens = _tokenize_cn("hello世界")
-        assert isinstance(tokens, list)
-        assert len(tokens) >= 2
 
 
 # ======================================================================
