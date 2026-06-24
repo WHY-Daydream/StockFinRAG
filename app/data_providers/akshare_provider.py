@@ -125,7 +125,6 @@ def fetch_latest_news(limit: int = 10) -> List[Dict]:
 
 def save_news(news_list: List[Dict]) -> int:
     """保存新闻到 MySQL documents 表（自动去重）"""
-    from db import get_mysql
 
     if not news_list:
         return 0
