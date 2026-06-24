@@ -153,6 +153,123 @@ function getRecentHistory() {
     return recent.map(function(m) { return { role: m.role, content: m.content }; });
 }
 
+function sendQuestionStream() {
+    var input = document.getElementById('question-input');
+    var question = input.value.trim();
+    if (!question) return;
+    var container = document.getElementById('chat-messages');
+    var btn = document.getElementById('send-btn');
+    input.value = '';
+    btn.disabled = true;
+
+    container.innerHTML += '<div class="message message-user"><div class="bubble">' + escapeHtml(question) + '</div></div>';
+    saveMessage('user', question, null);
+
+    var STEPS = [
+        { id: 'step-search',  label: '\u{1F50D} 检索知识库' },
+        { id: 'step-analyze', label: '\u{1F914} AI 分析问题' },
+        { id: 'step-comply',  label: '✅ 合规审核' },
+    ];
+    var bubbleId = 'stream-bubble';
+
+    var stepsHtml = STEPS.map(function(s, i) {
+        return '<div id="' + s.id + '" style="padding:4px 0;display:flex;align-items:center;gap:8px;opacity:' + (i===0?'1':'0.4') + '">' +
+            '<span class="step-indicator ' + (i===0?'step-active':'') + '" style="width:20px;text-align:center">' +
+                (i===0 ? '<span class="step-hourglass">⏳</span>' : '○') +
+            '</span>' +
+            '<span>' + s.label + '</span></div>';
+    }).join('');
+
+    container.innerHTML += '<div class="message message-assistant" id="loading-msg">' +
+        '<div class="bubble" style="min-width:220px">' + stepsHtml +
+            '<div id="' + bubbleId + '" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;min-height:20px">' +
+            '</div></div></div>';
+    container.scrollTop = container.scrollHeight;
+
+    var sessionId = getCurrentSession();
+    if (!sessionId) {
+        sessionId = generateId();
+        setCurrentSession(sessionId);
+        var sessions = getSessions();
+        sessions.unshift({ id: sessionId, preview: question.slice(0, 30), created: Date.now() });
+        saveSessions(sessions);
+        renderSessionList();
+    }
+
+    function updateStep(stepName) {
+        var map = { retrieving: 0, analyzing: 1, checking: 2 };
+        var idx = map[stepName];
+        if (idx === undefined) return;
+        if (idx > 0) {
+            var prev = document.getElementById(STEPS[idx-1].id);
+            if (prev) { prev.querySelector('.step-indicator').textContent = '✅'; prev.style.opacity = '0.6'; }
+        }
+        var cur = document.getElementById(STEPS[idx].id);
+        if (cur) { cur.style.opacity = '1'; cur.querySelector('.step-indicator').innerHTML = '<span class="step-hourglass">⏳</span>'; }
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function finishSteps() {
+        STEPS.forEach(function(s, i) {
+            var el = document.getElementById(s.id);
+            if (el) { el.querySelector('.step-indicator').textContent = '✅'; el.style.opacity = i < STEPS.length-1 ? '0.6' : '1'; }
+        });
+    }
+
+    fetch('/api/ask/stream', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: question, session_id: sessionId, history: getRecentHistory() }),
+    })
+    .then(function(response) {
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+        var answerText = '';
+        var eventType = '';
+
+        function processChunk() {
+            var lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (var l = 0; l < lines.length; l++) {
+                var line = lines[l];
+                if (line.startsWith('event: ')) { eventType = line.slice(7).trim(); }
+                else if (line.startsWith('data: ')) {
+                    var data = line.slice(6);
+                    if (eventType === 'step') { updateStep(data); }
+                    else if (eventType === 'token') {
+                        answerText += data.replace(/\\n/g, '\n');
+                        document.getElementById(bubbleId).innerHTML = marked.parse(answerText) + '<span class="stream-cursor">|</span>';
+                        container.scrollTop = container.scrollHeight;
+                    } else if (eventType === 'done') {
+                        var result = JSON.parse(data);
+                        finishSteps();
+                        var complianceHtml = result.compliance === 'pass' ? '<div class="compliance-pass">✅ 合规审核通过</div>' : '<div class="compliance-reject">⛔ ' + escapeHtml(result.compliance_reason || '') + '</div>';
+                        document.getElementById(bubbleId).innerHTML = marked.parse(result.answer) + complianceHtml;
+                        saveMessage('assistant', result.answer || '', result.compliance || '', result.compliance_reason || '');
+                        container.scrollTop = container.scrollHeight;
+                    }
+                }
+            }
+        }
+
+        function read() {
+            return reader.read().then(function(res) {
+                if (res.done) return;
+                buffer += decoder.decode(res.value, { stream: true });
+                processChunk();
+                return read();
+            });
+        }
+        return read();
+    })
+    .catch(function(err) {
+        var el = document.getElementById(bubbleId);
+        if (el) el.innerHTML = '<div style="color:#ff4d4f">❗ 请求失败: ' + escapeHtml(err.message) + '</div>';
+        finishSteps();
+    })
+    .finally(function() { btn.disabled = false; input.focus(); });
+}
+
 function sendQuestion() {
     const input = document.getElementById('question-input');
     const question = input.value.trim();

@@ -37,3 +37,9 @@ def test_stream_route_returns_sse_headers():
         source = f.read()
     assert "text/event-stream" in source
     assert "X-Accel-Buffering" in source
+
+
+def test_chat_js_has_stream_function():
+    with open("static/js/chat.js", "r", encoding="utf-8") as f:
+        source = f.read()
+    assert "sendQuestionStream" in source or "ask/stream" in source
