@@ -137,9 +137,27 @@ function sendQuestion() {
     container.innerHTML += `<div class="message message-user"><div class="bubble">${escapeHtml(question)}</div></div>`;
     saveMessage('user', question, null);
 
+    // 分步进度提示：每隔几秒切换文字，让用户知道正在处理
+    const LOADING_STEPS = [
+        { text: '🔍 正在检索知识库...', delay: 3000 },
+        { text: '🤔 AI 正在分析问题...', delay: 6000 },
+        { text: '✅ 正在合规审核...', delay: 9000 },
+        { text: '📝 即将完成...', delay: 999999 },
+    ];
     container.innerHTML += `<div class="message message-assistant" id="loading-msg">
-        <div class="bubble">⏳ 正在检索分析...</div></div>`;
+        <div class="bubble loading-pulse"><span id="loading-text">${LOADING_STEPS[0].text}</span></div></div>`;
     container.scrollTop = container.scrollHeight;
+    // 启动进度轮换定时器
+    let stepIdx = 0;
+    const stepTimer = setInterval(function() {
+        stepIdx++;
+        if (stepIdx < LOADING_STEPS.length) {
+            const el = document.getElementById('loading-text');
+            if (el) el.textContent = LOADING_STEPS[stepIdx].text;
+        }
+    }, 3000);
+    // 保存 timer ID 以便完成后清理
+    window._loadingTimer = stepTimer;
 
     let sessionId = getCurrentSession();
     if (!sessionId) {
@@ -158,6 +176,7 @@ function sendQuestion() {
     })
     .then(r => r.json())
     .then(data => {
+        if (window._loadingTimer) { clearInterval(window._loadingTimer); window._loadingTimer = null; }
         const loading = document.getElementById('loading-msg');
         if (loading) loading.remove();
         const complianceHtml = data.compliance === 'pass'
@@ -169,6 +188,7 @@ function sendQuestion() {
         container.scrollTop = container.scrollHeight;
     })
     .catch(err => {
+        if (window._loadingTimer) { clearInterval(window._loadingTimer); window._loadingTimer = null; }
         const loading = document.getElementById('loading-msg');
         if (loading) loading.remove();
         container.innerHTML += `<div class="message message-assistant"><div class="bubble">❌ 请求失败：${escapeHtml(err.message)}</div></div>`;
