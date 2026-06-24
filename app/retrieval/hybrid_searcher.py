@@ -2,82 +2,104 @@ from typing import List, Dict, Any
 from pymilvus import Collection
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from loguru import logger
-import sys; sys.path.insert(0, "..")
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import Config
-from milvus_client import connect_milvus
+from milvus_client import connect_milvus, create_collection_if_not_exists
 
 
 class HybridSearcher:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self):
+        if hasattr(self, '_initialized') and self._initialized:
+            return
         connect_milvus()
-        self.col_child = Collection(Config.MILVUS_COLLECTION_CHILD)
-        self.col_child.load()
-        self.col_parent = Collection(Config.MILVUS_COLLECTION_PARENT)
-        self.col_parent.load()
+        self.col_child = create_collection_if_not_exists(
+            Config.MILVUS_COLLECTION_CHILD, Config.EMBEDDING_DIM
+        )
+        self.col_parent = create_collection_if_not_exists(
+            Config.MILVUS_COLLECTION_PARENT, Config.EMBEDDING_DIM
+        )
         self.embedder = SentenceTransformer(Config.EMBEDDING_MODEL)
         self.reranker = CrossEncoder(Config.RERANK_MODEL)
+        self._initialized = True
 
-    def search(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
-        # 1. 向量检索 child
-        query_vec = self.embedder.encode(query, normalize_embeddings=True).tolist()
-        search_params = {"metric_type": "IP", "params": {"nprobe": 128}}
-        results = self.col_child.search(
+    def _search_collection(self, collection: Collection, query_vec: list,
+                           top_k: int) -> List[Dict[str, Any]]:
+        """对单个集合执行向量检索"""
+        search_params = {"metric_type": "IP", "params": {}}
+        results = collection.search(
             data=[query_vec],
             anns_field="embedding",
             param=search_params,
-            limit=top_k * 2,
+            limit=top_k,
             output_fields=["doc_id", "chunk_id", "content"],
         )
-        child_hits = []
-        for hits in results:
-            for hit in hits:
-                child_hits.append({
+        hits = []
+        for hits_group in results:
+            for hit in hits_group:
+                hits.append({
                     "doc_id": hit.entity.get("doc_id"),
                     "chunk_id": hit.entity.get("chunk_id"),
                     "content": hit.entity.get("content"),
                     "score": hit.score,
-                    "type": "child",
                 })
+        return hits
 
-        # 2. 从 child 找对应的 parent 补全上下文
-        parent_hits = self._fetch_parents(child_hits)
-
-        # 3. 合并 + Rerank
-        candidates = child_hits + parent_hits
-        if candidates:
-            pairs = [(query, c["content"]) for c in candidates]
-            rerank_scores = self.reranker.predict(pairs)
-            for i, score in enumerate(rerank_scores):
-                candidates[i]["rerank_score"] = float(score)
-            candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
-            candidates = candidates[:top_k]
+    def _rerank(self, query: str, candidates: List[Dict]) -> List[Dict]:
+        """BGE Rerank 重排序"""
+        if not candidates:
+            return candidates
+        pairs = [(query, c["content"]) for c in candidates]
+        scores = self.reranker.predict(pairs)
+        for i, score in enumerate(scores):
+            candidates[i]["rerank_score"] = float(score)
+        candidates.sort(key=lambda x: x["rerank_score"], reverse=True)
         return candidates
 
-    def _fetch_parents(self, child_hits: List[Dict]) -> List[Dict]:
-        seen_doc_ids = set()
-        for hit in child_hits:
-            did = hit.get("doc_id")
-            if did is not None:
-                seen_doc_ids.add(did)
-        if not seen_doc_ids:
-            return []
-        expr = " || ".join(f"doc_id == {did}" for did in seen_doc_ids)
-        # 去重，每个 doc 取第一条 parent
-        results = self.col_parent.query(
-            expr=f'{expr} && chunk_type == "parent"',
-            output_fields=["doc_id", "chunk_id", "content"],
-            limit=len(seen_doc_ids),
-        )
-        seen = set()
+    def search(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+        """
+        双通道加权混合检索
+
+        Channel A - Parent（权重 0.6）: 向量搜索 parent 集合 → Rerank
+        Channel B - Child（权重 0.4）: 向量搜索 child 集合 → Rerank → doc 去重
+
+        合并：按加权分排序，同 doc 保留高分，取最终 top_k
+        """
+        query_vec = self.embedder.encode(query, normalize_embeddings=True).tolist()
+
+        # Channel A: 搜索 Parent（完整段落，高权重）
+        parent_hits = self._search_collection(self.col_parent, query_vec, top_k * 2)
+        parent_hits = self._rerank(query, parent_hits)
+        for h in parent_hits:
+            h["type"] = "parent"
+            h["weighted_score"] = h["rerank_score"] * 0.6
+
+        # Channel B: 搜索 Child（精确匹配，低权重）
+        child_hits = self._search_collection(self.col_child, query_vec, top_k * 2)
+        child_hits = self._rerank(query, child_hits)
+        for h in child_hits:
+            h["type"] = "child"
+            h["weighted_score"] = h["rerank_score"] * 0.4
+
+        # 合并：按加权分排序，同 doc 保留高分
+        combined = parent_hits + child_hits
+        combined.sort(key=lambda x: x["weighted_score"], reverse=True)
+
+        # doc 级别去重（相同 doc 只保留最高分的）
+        seen_docs = set()
         deduped = []
-        for r in results:
-            if r["doc_id"] not in seen:
-                seen.add(r["doc_id"])
-                deduped.append({
-                    "doc_id": r["doc_id"],
-                    "content": r["content"],
-                    "score": 0,
-                    "type": "parent",
-                })
+        for h in combined:
+            if h["doc_id"] not in seen_docs:
+                seen_docs.add(h["doc_id"])
+                deduped.append(h)
+            if len(deduped) >= top_k:
+                    break
+
+        logger.info(f"Search '{query[:30]}': {len(parent_hits)} parent + {len(child_hits)} child -> {len(deduped)} final")
         return deduped

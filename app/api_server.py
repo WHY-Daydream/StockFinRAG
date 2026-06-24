@@ -74,6 +74,26 @@ def ask():
         return jsonify({"error": "question is required"}), 400
 
     session_id = data.get("session_id", str(uuid.uuid4()))
+
+    # 检查问答结果缓存（相同问题直接返回，跳过 DeepSeek）
+    from retrieval.cache import ResultCache
+    answer_cache = ResultCache()
+    answer_cache_key = f"answer:{question}"
+    cached = answer_cache.redis.get(answer_cache_key)
+    if cached:
+        import json as _json
+        try:
+            cached_data = _json.loads(cached)
+            logger.info(f"Answer cache hit: {question[:50]}...")
+            return jsonify({
+                "session_id": session_id,
+                "question": question,
+                "answer": cached_data.get("answer", ""),
+                "compliance": cached_data.get("compliance", "pass"),
+            })
+        except Exception:
+            pass  # 缓存解析失败，重新走流程
+
     graph = get_qa_graph()
 
     initial_state = {
@@ -89,12 +109,15 @@ def ask():
 
     try:
         result = graph.invoke(initial_state, config={"configurable": {"thread_id": session_id}})
-        return jsonify({
+        response_data = {
             "session_id": session_id,
             "question": question,
             "answer": result["final_answer"],
             "compliance": result.get("compliance_check", "pending"),
-        })
+        }
+        # 缓存完整结果，TTL 延长到 30 分钟
+        answer_cache.redis.setex(answer_cache_key, 1800, _json.dumps(response_data, ensure_ascii=False))
+        return jsonify(response_data)
     except Exception as e:
         traceback.print_exc()
         logger.exception(f"Ask failed for question: {question}")
