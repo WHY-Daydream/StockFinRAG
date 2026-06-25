@@ -336,7 +336,7 @@ class QAAnswerService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT question, answer, compliance_check, compliance_reason "
+                    "SELECT question, answer, compliance_check "
                     "FROM qa_logs WHERE question=%s ORDER BY id DESC LIMIT 1",
                     (question,),
                 )
@@ -348,7 +348,7 @@ class QAAnswerService:
                     "question": row["question"],
                     "answer": row["answer"],
                     "compliance": row.get("compliance_check", "pass"),
-                    "compliance_reason": row.get("compliance_reason", ""),
+                    "compliance_reason": "",
                 }
         finally:
             conn.close()
