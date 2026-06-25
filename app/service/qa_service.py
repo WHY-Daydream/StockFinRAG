@@ -19,18 +19,32 @@ class QAAnswerService:
         self.cache = ResultCache()
 
     def ask(self, question: str, session_id: str, history: list = None) -> dict:
-        """处理一个问题，返回结构化结果"""
+        """处理一个问题，返回结构化结果（三级缓存：Redis → MySQL → RAG）"""
         cache_key = f"answer:{question}"
+
+        # ——— 第一级：Redis 缓存（最快） ———
         cached = self.cache.redis.get(cache_key)
         if cached:
             try:
                 data = json.loads(cached)
-                logger.info(f"Answer cache hit: {question[:50]}...")
+                logger.info(f"Answer cache hit (Redis): {question[:40]}...")
                 return data
             except Exception:
                 pass
 
-        # 三级降级获取对话历史
+        # ——— 第二级：MySQL qa_logs 历史回答（中等速度） ———
+        try:
+            mysql_answer = self._lookup_mysql_answer(question)
+            if mysql_answer:
+                logger.info(f"Answer cache hit (MySQL): {question[:40]}...")
+                # 写入 Redis 加速下次访问
+                self.cache.redis.setex(cache_key, 1800,
+                    json.dumps(mysql_answer, ensure_ascii=False))
+                return mysql_answer
+        except Exception as e:
+            logger.warning(f"MySQL answer lookup failed: {e}")
+
+        # ——— 第三级：完整 RAG 管道（最慢） ———
         conversation_history = self._get_history(session_id, frontend_history=history)
 
         from agent.graph import get_qa_graph
@@ -240,6 +254,30 @@ class QAAnswerService:
                     history.append({"role": "user", "content": row["question"]})
                     history.append({"role": "assistant", "content": row["answer"]})
                 return history
+        finally:
+            conn.close()
+
+    def _lookup_mysql_answer(self, question: str) -> dict:
+        """从 MySQL qa_logs 查询历史回答（精确匹配）"""
+        from db import get_mysql
+        conn = get_mysql()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT question, answer, compliance_check, compliance_reason "
+                    "FROM qa_logs WHERE question=%s ORDER BY id DESC LIMIT 1",
+                    (question,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {
+                    "session_id": "",
+                    "question": row["question"],
+                    "answer": row["answer"],
+                    "compliance": row.get("compliance_check", "pass"),
+                    "compliance_reason": row.get("compliance_reason", ""),
+                }
         finally:
             conn.close()
 
