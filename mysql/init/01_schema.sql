@@ -37,10 +37,12 @@ CREATE TABLE IF NOT EXISTS qa_logs (
     retrieved_chunks JSON,
     agent_trace     JSON,
     compliance_check VARCHAR(32) DEFAULT 'pending',
+    compliance_reason TEXT DEFAULT NULL COMMENT '合规审核未通过的原因',
     model_name      VARCHAR(64),
     latency_ms      INT DEFAULT 0,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_session (session_id),
     INDEX idx_compliance (compliance_check),
-    INDEX idx_created (created_at)
+    INDEX idx_created (created_at),
+    INDEX idx_question (question(100))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -85,10 +85,6 @@ class QAAnswerService:
 
     def ask_stream(self, question: str, session_id: str, history: list = None):
         """SSE 流式回答生成器（Redis → MySQL → RAG）"""
-        import json
-
-        # 初始事件：立即推送，触发浏览器打开 SSE 连接
-        yield ":connected\n\n"
 
         # ——— 第一级：Redis 缓存 ———
         cache_key = f"answer:{question}"
@@ -138,6 +134,7 @@ class QAAnswerService:
             logger.warning(f"Stream MySQL lookup failed: {e}")
 
         # ——— 第三级：完整 RAG 管道 ———
+        yield ":connected\n\n"  # 初始事件：冲刷缓存，确保 SSE 连接已打开
         from openai import OpenAI
         from retrieval.hybrid_searcher import HybridSearcher
         from retrieval.context_enricher import ContextEnricher
@@ -336,7 +333,7 @@ class QAAnswerService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT question, answer, compliance_check "
+                    "SELECT question, answer, compliance_check, compliance_reason "
                     "FROM qa_logs WHERE question=%s ORDER BY id DESC LIMIT 1",
                     (question,),
                 )
@@ -348,7 +345,7 @@ class QAAnswerService:
                     "question": row["question"],
                     "answer": row["answer"],
                     "compliance": row.get("compliance_check", "pass"),
-                    "compliance_reason": "",
+                    "compliance_reason": row.get("compliance_reason") or "",
                 }
         finally:
             conn.close()
@@ -366,13 +363,14 @@ class QAAnswerService:
                 with conn.cursor() as cur:
                     cur.execute(
                         """INSERT INTO qa_logs
-                           (session_id, question, answer, retrieved_chunks, agent_trace, compliance_check, latency_ms)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                           (session_id, question, answer, retrieved_chunks, agent_trace, compliance_check, compliance_reason, latency_ms)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
                         (session_id, question, result.get("final_answer", ""),
                          json.dumps([{"doc_id": c.get("doc_id"), "score": c.get("rerank_score", c.get("score"))}
                                      for c in context], ensure_ascii=False),
                          json.dumps({"retrieval_count": len(context)}),
-                         result.get("compliance_check", "pending"), latency_ms),
+                         result.get("compliance_check", "pending"),
+                         result.get("compliance_reason", ""), latency_ms),
                     )
                     conn.commit()
             finally:

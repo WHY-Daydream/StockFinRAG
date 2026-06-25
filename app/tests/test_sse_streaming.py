@@ -21,8 +21,8 @@ def test_stream_first_event_is_valid_sse():
     svc = QAAnswerService()
     gen = svc.ask_stream("test_q", "sess_1")
     first = next(gen)
-    assert first.startswith("event:")
-    assert "data:" in first
+    # 第一个事件可能是 :connected（注释）或 event:（缓存命中）
+    assert first.startswith("event:") or first.startswith(":"), f"Unexpected SSE: {first[:50]}"
 
 
 def test_stream_route_exists():
