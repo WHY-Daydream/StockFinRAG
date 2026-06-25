@@ -159,6 +159,8 @@ function sendQuestionStream() {
     if (!question) return;
     var container = document.getElementById('chat-messages');
     var btn = document.getElementById('send-btn');
+    // 防止快速双击重复提交
+    if (btn.disabled) return;
     input.value = '';
     btn.disabled = true;
 
@@ -170,7 +172,7 @@ function sendQuestionStream() {
         { id: 'step-analyze', label: '\u{1F914} AI 分析问题' },
         { id: 'step-comply',  label: '✅ 合规审核' },
     ];
-    var bubbleId = 'stream-bubble';
+    var bubbleId = 'bubble-' + Date.now();
 
     var stepsHtml = STEPS.map(function(s, i) {
         return '<div id="' + s.id + '" style="padding:4px 0;display:flex;align-items:center;gap:8px;opacity:' + (i===0?'1':'0.4') + '">' +
@@ -180,7 +182,7 @@ function sendQuestionStream() {
             '<span>' + s.label + '</span></div>';
     }).join('');
 
-    container.innerHTML += '<div class="message message-assistant" id="loading-msg">' +
+    container.innerHTML += '<div class="message message-assistant" id="loading-' + Date.now() + '">' +
         '<div class="bubble" style="min-width:220px">' + stepsHtml +
             '<div id="' + bubbleId + '" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;min-height:20px">' +
             '</div></div></div>';
