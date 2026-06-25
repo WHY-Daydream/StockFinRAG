@@ -142,16 +142,18 @@ def ask_stream():
     session_id = req.session_id or str(uuid.uuid4())
 
     def generate():
-        yield from qa_service.ask_stream(req.question, session_id, history=req.history)
+        for chunk in qa_service.ask_stream(req.question, session_id, history=req.history):
+            # 转 bytes：direct_passthrough 模式下 WSGI 要求 bytes
+            yield chunk.encode("utf-8") if isinstance(chunk, str) else chunk
 
     resp = Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
+        direct_passthrough=True,
     )
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     resp.headers["Connection"] = "keep-alive"
-    resp.headers["Transfer-Encoding"] = "chunked"
     return resp
 
 
