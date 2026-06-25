@@ -208,6 +208,9 @@ function sendQuestionStream() {
                 prevInd.className = 'step-indicator';
                 prev.style.opacity = '0.6';
             }
+            // 清除上一步的检索进度文字
+            var progEl = document.getElementById('retrieval-progress');
+            if (progEl) { progEl.textContent = ''; }
         }
         var cur = document.getElementById(STEPS[idx].id);
         if (cur) {
@@ -237,6 +240,20 @@ function sendQuestionStream() {
             }
             timer.textContent = info.d + 's';
         } catch(e) { console.warn('timing error:', e); }
+    }
+
+    function updateRetrievalProgress(data) {
+        var progEl = document.getElementById('retrieval-progress');
+        if (!progEl) {
+            // 首次调用时创建进度显示区
+            var stepContainer = document.getElementById('step-search');
+            if (!stepContainer) return;
+            progEl = document.createElement('div');
+            progEl.id = 'retrieval-progress';
+            progEl.style.cssText = 'font-size:12px;color:#666;margin-top:4px;padding-left:28px';
+            stepContainer.parentNode.insertBefore(progEl, stepContainer.nextSibling);
+        }
+        progEl.textContent = '› ' + data;
     }
 
     function finishSteps() {
@@ -271,6 +288,7 @@ function sendQuestionStream() {
                 else if (line.startsWith('data: ')) {
                     var data = line.slice(6);
                     if (eventType === 'step') { updateStep(data); }
+                    else if (eventType === 'progress') { updateRetrievalProgress(data); }
                     else if (eventType === 'timing') { updateStepTiming(data); }
                     else if (eventType === 'token') {
                         answerText += data.replace(/\\n/g, '\n');

@@ -146,14 +146,21 @@ class QAAnswerService:
         yield "event: step\ndata: retrieving\n\n"
         conversation_history = self._get_history(session_id, frontend_history=history)
         t_retrieving = time.time()
+
+        # 逐步展示检索过程
+        yield "event: progress\ndata: 初始化检索引擎...\n\n"
         try:
             searcher = HybridSearcher()
-            enricher = ContextEnricher()
+            yield "event: progress\ndata: 向量检索 + BM25 关键词检索...\n\n"
             results = searcher.search(question, top_k=10)
+            yield f"event: progress\ndata: 已找到 {len(results)} 篇候选文档\n\n"
+            enricher = ContextEnricher()
             enriched = enricher.enrich(results, window_size=2)
+            yield f"event: progress\ndata: 上下文扩展完成, 共 {len(enriched)} 篇\n\n"
         except Exception as e:
             logger.warning(f"Stream retrieval failed: {e}")
             enriched = []
+
         t_retrieving = time.time() - t_retrieving
         yield f"event: timing\ndata: {json.dumps({'s':'retrieving','d':round(t_retrieving,1)})}\n\n"
 
