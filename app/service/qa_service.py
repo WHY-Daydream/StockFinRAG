@@ -94,7 +94,6 @@ class QAAnswerService:
                 data = json.loads(cached)
                 logger.info(f"Stream cache hit (Redis): {question[:40]}...")
                 # 以 SSE 事件形式直接输出缓存的回答
-                yield "event: token\ndata: 缓存回答\n\n"
                 yield f"event: token\ndata: {data.get('answer','')}\n\n"
                 yield "event: step\ndata: checking\n\n"
                 done = json.dumps({
@@ -117,7 +116,6 @@ class QAAnswerService:
                 logger.info(f"Stream cache hit (MySQL): {question[:40]}...")
                 self.cache.redis.setex(cache_key, 1800,
                     json.dumps(mysql_answer, ensure_ascii=False))
-                yield "event: token\ndata: 缓存回答\n\n"
                 yield f"event: token\ndata: {mysql_answer.get('answer','')}\n\n"
                 yield "event: step\ndata: checking\n\n"
                 done = json.dumps({
