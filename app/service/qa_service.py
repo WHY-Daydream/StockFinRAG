@@ -359,17 +359,33 @@ class QAAnswerService:
             conn = get_mysql()
             try:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        """INSERT INTO qa_logs
-                           (session_id, question, answer, retrieved_chunks, agent_trace, compliance_check, compliance_reason, latency_ms)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-                        (session_id, question, result.get("final_answer", ""),
-                         json.dumps([{"doc_id": c.get("doc_id"), "score": c.get("rerank_score", c.get("score"))}
-                                     for c in context], ensure_ascii=False),
-                         json.dumps({"retrieval_count": len(context)}),
-                         result.get("compliance_check", "pending"),
-                         result.get("compliance_reason", ""), latency_ms),
-                    )
+                    try:
+                        cur.execute(
+                            """INSERT INTO qa_logs
+                               (session_id, question, answer, retrieved_chunks, agent_trace, compliance_check, compliance_reason, latency_ms)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                            (session_id, question, result.get("final_answer", ""),
+                             json.dumps([{"doc_id": c.get("doc_id"), "score": c.get("rerank_score", c.get("score"))}
+                                         for c in context], ensure_ascii=False),
+                             json.dumps({"retrieval_count": len(context)}),
+                             result.get("compliance_check", "pending"),
+                             result.get("compliance_reason", ""), latency_ms),
+                        )
+                    except Exception as _e:
+                        if "Unknown column" in str(_e):
+                            cur.execute(
+                                """INSERT INTO qa_logs
+                                   (session_id, question, answer, retrieved_chunks, agent_trace, compliance_check, latency_ms)
+                                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                                (session_id, question, result.get("final_answer", ""),
+                                 json.dumps([{"doc_id": c.get("doc_id"), "score": c.get("rerank_score", c.get("score"))}
+                                             for c in context], ensure_ascii=False),
+                                 json.dumps({"retrieval_count": len(context)}),
+                                 result.get("compliance_check", "pending"), latency_ms),
+                            )
+                            logger.warning("compliance_reason missing in qa_logs, run: ALTER TABLE qa_logs ADD COLUMN compliance_reason TEXT")
+                        else:
+                            raise
                     conn.commit()
             finally:
                 conn.close()
