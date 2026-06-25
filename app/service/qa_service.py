@@ -87,6 +87,9 @@ class QAAnswerService:
         """SSE 流式回答生成器（Redis → MySQL → RAG）"""
         import json
 
+        # 初始事件：立即推送，触发浏览器打开 SSE 连接
+        yield ":connected\n\n"
+
         # ——— 第一级：Redis 缓存 ———
         cache_key = f"answer:{question}"
         cached = self.cache.redis.get(cache_key)

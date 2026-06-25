@@ -147,10 +147,12 @@ def ask_stream():
     resp = Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
+        direct_passthrough=True,
     )
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     resp.headers["Connection"] = "keep-alive"
+    resp.headers["Transfer-Encoding"] = "chunked"
     return resp
 
 
