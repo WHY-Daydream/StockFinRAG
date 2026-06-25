@@ -74,6 +74,15 @@ try:
     _ = get_qa_graph()  # 触发编译，不保留额外引用
     logger.info("Warm-up: LangGraph 就绪")
 
+    # 4. 立即拉取指数行情（非交易日/非定时时间也有数据）
+    logger.info("Warm-up: 拉取指数行情...")
+    from data_providers.akshare_provider import update_all_indices
+    try:
+        _count = update_all_indices()
+        logger.info(f"Warm-up: 指数行情更新完成 ({_count} 条)")
+    except Exception as e:
+        logger.warning(f"Warm-up: 指数行情拉取失败（非致命）: {e}")
+
 except Exception as e:
     logger.warning(f"Warm-up 部分失败（非致命）: {e}")
 logger.info(f"Warm-up: 完成, 耗时 {time.time() - _warmup_start:.1f}s")
