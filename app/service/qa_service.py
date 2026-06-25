@@ -84,12 +84,61 @@ class QAAnswerService:
         return response
 
     def ask_stream(self, question: str, session_id: str, history: list = None):
-        """SSE 流式回答生成器"""
+        """SSE 流式回答生成器（Redis → MySQL → RAG）"""
+        import json
+
+        # ——— 第一级：Redis 缓存 ———
+        cache_key = f"answer:{question}"
+        cached = self.cache.redis.get(cache_key)
+        if cached:
+            try:
+                data = json.loads(cached)
+                logger.info(f"Stream cache hit (Redis): {question[:40]}...")
+                # 以 SSE 事件形式直接输出缓存的回答
+                yield "event: token\ndata: 缓存回答\n\n"
+                yield f"event: token\ndata: {data.get('answer','')}\n\n"
+                yield "event: step\ndata: checking\n\n"
+                done = json.dumps({
+                    "answer": data.get("answer", ""),
+                    "compliance": data.get("compliance", "pass"),
+                    "compliance_reason": data.get("compliance_reason", ""),
+                    "total_duration": 0,
+                    "timing": {"retrieving": 0, "analyzing": 0, "checking": 0},
+                    "from_cache": True,
+                }, ensure_ascii=False)
+                yield f"event: done\ndata: {done}\n\n"
+                return
+            except Exception:
+                pass
+
+        # ——— 第二级：MySQL qa_logs ———
+        try:
+            mysql_answer = self._lookup_mysql_answer(question)
+            if mysql_answer:
+                logger.info(f"Stream cache hit (MySQL): {question[:40]}...")
+                self.cache.redis.setex(cache_key, 1800,
+                    json.dumps(mysql_answer, ensure_ascii=False))
+                yield "event: token\ndata: 缓存回答\n\n"
+                yield f"event: token\ndata: {mysql_answer.get('answer','')}\n\n"
+                yield "event: step\ndata: checking\n\n"
+                done = json.dumps({
+                    "answer": mysql_answer.get("answer", ""),
+                    "compliance": mysql_answer.get("compliance", "pass"),
+                    "compliance_reason": mysql_answer.get("compliance_reason", ""),
+                    "total_duration": 0,
+                    "timing": {"retrieving": 0, "analyzing": 0, "checking": 0},
+                    "from_cache": True,
+                }, ensure_ascii=False)
+                yield f"event: done\ndata: {done}\n\n"
+                return
+        except Exception as e:
+            logger.warning(f"Stream MySQL lookup failed: {e}")
+
+        # ——— 第三级：完整 RAG 管道 ———
         from openai import OpenAI
         from retrieval.hybrid_searcher import HybridSearcher
         from retrieval.context_enricher import ContextEnricher
         from agent.graph import compliance_node
-        import json
 
         yield "event: step\ndata: retrieving\n\n"
         conversation_history = self._get_history(session_id, frontend_history=history)
@@ -189,6 +238,19 @@ class QAAnswerService:
             "timing": {"retrieving": round(t_retrieving,1), "analyzing": round(t_analyzing,1), "checking": round(t_checking,1)},
         }, ensure_ascii=False)
         yield f"event: done\ndata: {done_data}\n\n"
+
+        # 写入答案缓存（让第二次问同一个问题秒回）
+        try:
+            cache_payload = json.dumps({
+                "session_id": session_id,
+                "question": question,
+                "answer": full_answer,
+                "compliance": compliance_result["compliance"],
+                "compliance_reason": compliance_result["compliance_reason"],
+            }, ensure_ascii=False)
+            self.cache.redis.setex(f"answer:{question}", 1800, cache_payload)
+        except Exception as e:
+            logger.error(f"Stream cache write error: {e}")
 
         # 审计日志 + Redis 历史
         try:

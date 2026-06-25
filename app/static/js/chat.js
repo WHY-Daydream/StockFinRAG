@@ -227,13 +227,16 @@ function sendQuestionStream() {
             if (idx === undefined) return;
             var el = document.getElementById(STEPS[idx].id);
             if (!el) return;
-            var labelSpan = el.querySelector('span:last-child');
-            if (labelSpan) {
-                var text = labelSpan.textContent || labelSpan.innerText;
-                text = text.replace(/\s*\([\d.]+s\)$/, '');  // 移除旧时间
-                labelSpan.textContent = text + ' (' + info.d + 's)';
+            // 查找或创建计时元素
+            var timer = el.querySelector('.step-timer');
+            if (!timer) {
+                timer = document.createElement('span');
+                timer.className = 'step-timer';
+                timer.style.cssText = 'font-size:11px;color:#999;margin-left:6px';
+                el.querySelector('span:last-child').appendChild(timer);
             }
-        } catch(e) {}
+            timer.textContent = info.d + 's';
+        } catch(e) { console.warn('timing error:', e); }
     }
 
     function finishSteps() {
@@ -276,7 +279,8 @@ function sendQuestionStream() {
                     } else if (eventType === 'done') {
                         var result = JSON.parse(data);
                         finishSteps();
-                        var totalHtml = result.total_duration ? '<div style="font-size:12px;color:#999;margin-top:4px">⏱ 总耗时 ' + result.total_duration + 's</div>' : '';
+                        var cacheHtml = result.from_cache ? '<span style="font-size:11px;color:#52c41a;margin-left:4px">⚡缓存</span>' : '';
+                        var totalHtml = result.total_duration ? '<div style="font-size:12px;color:#999;margin-top:4px">⏱ 总耗时 ' + result.total_duration + 's' + cacheHtml + '</div>' : '';
                         var complianceHtml = result.compliance === 'pass' ? '<div class="compliance-pass">✅ 合规审核通过</div>' : '<div class="compliance-reject">⛔ ' + escapeHtml(result.compliance_reason || '') + '</div>';
                         document.getElementById(bubbleId).innerHTML = marked.parse(result.answer) + totalHtml + complianceHtml;
                         saveMessage('assistant', result.answer || '', result.compliance || '', result.compliance_reason || '');
